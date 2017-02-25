@@ -13,6 +13,7 @@ The team is composed by:
 - Borja Pérez Pavón, University of Cantabria
 - Marcos Canales Mayo (team leader), University of Zaragoza
 
-Advised by:
+## Team advisors
+The team is advised by:
 - Ruben Gran Tejero
 - Darío Suárez Gracia
