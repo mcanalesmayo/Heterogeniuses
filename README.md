@@ -15,5 +15,5 @@ The team is composed by:
 
 ## Team advisors
 The team is advised by:
-- Ruben Gran Tejero
+- Rubén Gran Tejero
 - Darío Suárez Gracia
