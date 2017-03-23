@@ -8,7 +8,7 @@ The team is composed by:
 - Alberto Álvarez Aldea, University of Zaragoza
 - David Nicuesa Aranda, University of Zaragoza
 - Jorge Cáncer Gil, University of Zaragoza
-- Carlos Escuín Blasco, University of Cataluña
+- Carlos Escuín Blasco, Polytechnic University of Catalonia
 - Denisa Andreea Constantinescu, University of Malaga
 - Borja Pérez Pavón, University of Cantabria
 - Marcos Canales Mayo (team leader), University of Zaragoza
