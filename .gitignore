@@ -1,0 +1,8 @@
+bin/
+*.elf
+*.ko
+*.o
+*.obj
+*.out
+*.so
+*.exe
