@@ -46,7 +46,7 @@ int main( int argc, char * argv[] )
 		exit( 1 );
 	}
 	bool floats = false;
-	if ( ( argc > 2 && strcmp( argv[2], "-f" ) == 0 ) || ( argc > 3 && strcmp( argv[2], "-f" ) == 0 ) )
+	if ( ( argc > 2 && strcmp( argv[2], "-f" ) == 0 ) || ( argc > 3 && strcmp( argv[3], "-f" ) == 0 ) )
 		floats = true;
 
 	stringstream ss;
