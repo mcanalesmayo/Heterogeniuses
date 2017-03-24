@@ -106,7 +106,7 @@ int setup(int argc, char **argv) {
  extern char   *optarg;
 		char   *filename = 0;
 		float  *buf;
-		char	line[1024];
+		char	line[20480];
 		int		isBinaryFile = 0;
 
 		float	threshold = 0.001;		/* default value */
@@ -126,7 +126,7 @@ int setup(int argc, char **argv) {
 		float	rmse;
 		
 		int		isOutput = 0;
-		//float	cluster_timing, io_timing;		
+		float	cluster_timing, io_timing;		
 
 		/* obtain command line arguments and change appropriate options */
 		while ( (opt=getopt(argc,argv,"i:t:m:n:l:bro"))!= EOF) {
@@ -158,7 +158,7 @@ int setup(int argc, char **argv) {
 		
 	/* ============== I/O begin ==============*/
     /* get nfeatures and npoints */
-    //io_timing = omp_get_wtime();
+    io_timing = omp_get_wtime();
     if (isBinaryFile) {		//Binary file input
         int infile;
         if ((infile = open(filename, O_RDONLY, "0600")) == -1) {
@@ -185,11 +185,11 @@ int setup(int argc, char **argv) {
             fprintf(stderr, "Error: no such file (%s)\n", filename);
             exit(1);
 		}		
-        while (fgets(line, 1024, infile) != NULL)
+        while (fgets(line, 20480, infile) != NULL)
 			if (strtok(line, " \t\n") != 0)
                 npoints++;			
         rewind(infile);
-        while (fgets(line, 1024, infile) != NULL) {
+        while (fgets(line, 20480, infile) != NULL) {
             if (strtok(line, " \t\n") != 0) {
                 /* ignore the id (first attribute): nfeatures = 1; */
                 while (strtok(NULL, " ,\t\n") != NULL) nfeatures++;
@@ -205,7 +205,7 @@ int setup(int argc, char **argv) {
             features[i] = features[i-1] + nfeatures;
         rewind(infile);
         i = 0;
-        while (fgets(line, 1024, infile) != NULL) {
+        while (fgets(line, 20480, infile) != NULL) {
             if (strtok(line, " \t\n") == NULL) continue;            
             for (j=0; j<nfeatures; j++) {
                 buf[i] = atof(strtok(NULL, " ,\t\n"));             
@@ -214,7 +214,7 @@ int setup(int argc, char **argv) {
         }
         fclose(infile);
     }
-    //io_timing = omp_get_wtime() - io_timing;
+    io_timing = omp_get_wtime() - io_timing;
 	
 	printf("\nI/O completed\n");
 	printf("\nNumber of objects: %d\n", npoints);
@@ -234,7 +234,7 @@ int setup(int argc, char **argv) {
 
 	/* ======================= core of the clustering ===================*/
 
-    //cluster_timing = omp_get_wtime();		/* Total clustering time */
+       cluster_timing = omp_get_wtime();		/* Total clustering time */
 	cluster_centres = NULL;
     index = cluster(npoints,				/* number of data points */
 					nfeatures,				/* number of features for each point */
@@ -248,7 +248,7 @@ int setup(int argc, char **argv) {
 					isRMSE,					/* calculate RMSE */
 					nloops);				/* number of iteration for each number of clusters */		
     
-	//cluster_timing = omp_get_wtime() - cluster_timing;
+	cluster_timing = omp_get_wtime() - cluster_timing;
 
 
 	/* =============== Command Line Output =============== */
@@ -269,8 +269,8 @@ int setup(int argc, char **argv) {
 	len = (float) ((max_nclusters - min_nclusters + 1)*nloops);
 
 	printf("Number of Iteration: %d\n", nloops);
-	//printf("Time for I/O: %.5fsec\n", io_timing);
-	//printf("Time for Entire Clustering: %.5fsec\n", cluster_timing);
+	printf("Time for I/O: %.5fsec\n", io_timing);
+	printf("Time for Entire Clustering: %.5fsec\n", cluster_timing);
 	
 	if(min_nclusters != max_nclusters){
 		if(nloops != 1){									//range of k, multiple iteration

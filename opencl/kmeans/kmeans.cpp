@@ -36,7 +36,7 @@
 #elif defined(RD_WG_SIZE)
         #define BLOCK_SIZE RD_WG_SIZE
 #else
-        #define BLOCK_SIZE 256
+        #define BLOCK_SIZE 512
 #endif
 
 #ifdef RD_WG_SIZE_1_0
@@ -46,7 +46,7 @@
 #elif defined(RD_WG_SIZE)
      #define BLOCK_SIZE2 RD_WG_SIZE
 #else
-     #define BLOCK_SIZE2 256
+     #define BLOCK_SIZE2 512
 #endif
 
 
@@ -144,13 +144,13 @@ int allocate(int n_points, int n_features, int n_clusters, float **feature)
 	cl_program prog = clCreateProgramWithSource(context, 1, slist, NULL, &err);
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateProgramWithSource() => %d\n", err); return -1; }
 	err = clBuildProgram(prog, 0, NULL, NULL, NULL, NULL);
-	{ // show warnings/errors
-	//	static char log[65536]; memset(log, 0, sizeof(log));
-	//	cl_device_id device_id = 0;
-	//	err = clGetContextInfo(context, CL_CONTEXT_DEVICES, sizeof(device_id), &device_id, NULL);
-	//	clGetProgramBuildInfo(prog, device_id, CL_PROGRAM_BUILD_LOG, sizeof(log)-1, log, NULL);
-	//	if(err || strstr(log,"warning:") || strstr(log, "error:")) printf("<<<<\n%s\n>>>>\n", log);
-	}
+	{ /* show warnings/errors
+		static char log[65536]; memset(log, 0, sizeof(log));
+		cl_device_id device_id = 0;
+//		err = clGetContextInfo(context, CL_CONTEXT_DEVICES, sizeof(device_id), &device_id, NULL);
+		clGetProgramBuildInfo(prog, device_id, CL_PROGRAM_BUILD_LOG, sizeof(log)-1, log, NULL);
+		if(err || strstr(log,"warning:") || strstr(log, "error:")) printf("<<<<\n%s\n>>>>\n", log);
+	*/}
 	if(err != CL_SUCCESS) { printf("ERROR: clBuildProgram() => %d\n", err); return -1; }
 	
 	char * kernel_kmeans_c  = "kmeans_kernel_c";
