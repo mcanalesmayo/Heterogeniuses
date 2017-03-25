@@ -64,8 +64,23 @@ static int initialize(int use_gpu)
 	size_t size;
 
 	// create OpenCL context
+	cl_platform_id *platform_ids;
 	cl_platform_id platform_id;
-	if (clGetPlatformIDs(1, &platform_id, NULL) != CL_SUCCESS) { printf("ERROR: clGetPlatformIDs(1,*,0) failed\n"); return -1; }
+	cl_uint num_platforms;
+	cl_platform_info platform_info;
+	char platform_name[30];
+	if (clGetPlatformIDs(0, NULL, &num_platforms) != CL_SUCCESS) { printf("ERROR: clGetPlatformIDs(0,NULL,&num_platforms) failed\n"); return -1; }
+	printf("Number of platforms: %d\n", num_platforms);
+	platform_ids = (cl_platform_id *) malloc(num_platforms * sizeof(cl_platform_id));
+	if (clGetPlatformIDs(num_platforms, platform_ids, NULL) != CL_SUCCESS) { printf("ERROR: clGetPlatformIDs(num_platforms,platform_ids,NULL) failed\n"); return -1; }
+	// NVIDIA CUDA is idx=1
+	platform_id = platform_ids[1];
+
+	for(int i=0; i<num_platforms; i++){
+		clGetPlatformInfo(platform_ids[i], CL_PLATFORM_NAME, 30, platform_name, NULL);
+		printf("Platform %d: %s\n", i, platform_name);
+	}
+
 	cl_context_properties ctxprop[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)platform_id, 0};
 	device_type = use_gpu ? CL_DEVICE_TYPE_GPU : CL_DEVICE_TYPE_CPU;
 	context = clCreateContextFromType( ctxprop, device_type, NULL, NULL, NULL );
@@ -84,6 +99,8 @@ static int initialize(int use_gpu)
 	// create command queue for the first device
 	cmd_queue = clCreateCommandQueue( context, device_list[0], 0, NULL );
 	if( !cmd_queue ) { printf("ERROR: clCreateCommandQueue() failed\n"); return -1; }
+
+	free(platform_ids);
 
 	return 0;
 }
