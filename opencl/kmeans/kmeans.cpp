@@ -49,11 +49,15 @@
      #define BLOCK_SIZE2 512
 #endif
 
+//#define TWO_GPUS
 
 
 // local variables
 static cl_context	    context;
 static cl_command_queue cmd_queue;
+#ifdef TWO_GPUS
+static cl_command_queue cmd_queue2;
+#endif
 static cl_device_type   device_type;
 static cl_device_id   * device_list;
 static cl_int           num_devices;
@@ -73,10 +77,10 @@ static int initialize(int use_gpu)
 
 	// get the list of GPUs
 	result = clGetContextInfo( context, CL_CONTEXT_DEVICES, 0, NULL, &size );
-	num_devices = (int) (size / sizeof(cl_device_id));
-	
+	num_devices = (int) (size / sizeof(cl_device_id));	
 	if( result != CL_SUCCESS || num_devices < 1 ) { printf("ERROR: clGetContextInfo() failed\n"); return -1; }
 	device_list = new cl_device_id[num_devices];
+	
 	if( !device_list ) { printf("ERROR: new cl_device_id[] failed\n"); return -1; }
 	result = clGetContextInfo( context, CL_CONTEXT_DEVICES, size, device_list, NULL );
 	if( result != CL_SUCCESS ) { printf("ERROR: clGetContextInfo() failed\n"); return -1; }
@@ -84,6 +88,10 @@ static int initialize(int use_gpu)
 	// create command queue for the first device
 	cmd_queue = clCreateCommandQueue( context, device_list[0], 0, NULL );
 	if( !cmd_queue ) { printf("ERROR: clCreateCommandQueue() failed\n"); return -1; }
+#ifdef TWO_GPUS
+	cmd_queue2 = clCreateCommandQueue( context, device_list[1], 0, NULL );
+	if( !cmd_queue2 ) { printf("ERROR: clCreateCommandQueue() failed\n"); return -1; }
+#endif
 
 	return 0;
 }
@@ -92,6 +100,9 @@ static int shutdown()
 {
 	// release resources
 	if( cmd_queue ) clReleaseCommandQueue( cmd_queue );
+#ifdef TWO_GPUS	
+	if( cmd_queue2 ) clReleaseCommandQueue( cmd_queue2 );
+#endif
 	if( context ) clReleaseContext( context );
 	if( device_list ) delete device_list;
 
@@ -228,10 +239,16 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 	
 	size_t global_work[3] = { n_points, 1, 1 }; 
 
+
 	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
 	size_t local_work_size=BLOCK_SIZE2; // work group size is defined by RD_WG_SIZE_1 or RD_WG_SIZE_1_0 2014/06/10 17:00:41
 	if(global_work[0]%local_work_size !=0)
 	  global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
+
+#ifdef TWO_GPUS
+	size_t global_work2[3] = { global_work[0]/2, 1, 1 };
+	global_work[0]=global_work[0]/2;
+#endif
 	
 	err = clEnqueueWriteBuffer(cmd_queue, d_cluster, 1, 0, n_clusters * n_features * sizeof(float), clusters[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_cluster (size:%d) => %d\n", n_points, err); return -1; }
@@ -249,6 +266,13 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 
 	err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, &local_work_size, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+
+#ifdef TWO_GPUS
+	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_s, 1, global_work, global_work2, &local_work_size, 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+	clFinish(cmd_queue2);
+#endif
+
 	clFinish(cmd_queue);
 	err = clEnqueueReadBuffer(cmd_queue, d_membership, 1, 0, n_points * sizeof(int), membership_OCL, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: Memcopy Out\n"); return -1; }
