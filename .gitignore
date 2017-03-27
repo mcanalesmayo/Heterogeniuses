@@ -6,4 +6,5 @@ bin/
 *.out
 *.so
 *.exe
-/data/kmenas/scale*
+/data/kmeans/scale*
+/data/scale*
