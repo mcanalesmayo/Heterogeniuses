@@ -6,3 +6,4 @@ bin/
 *.out
 *.so
 *.exe
+/data/kmenas/scale*
