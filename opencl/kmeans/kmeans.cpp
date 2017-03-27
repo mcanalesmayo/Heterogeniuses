@@ -74,8 +74,7 @@ static int initialize(int use_gpu)
 	platform_ids = (cl_platform_id *) malloc(num_platforms * sizeof(cl_platform_id));
 	if (clGetPlatformIDs(num_platforms, platform_ids, NULL) != CL_SUCCESS) { printf("ERROR: clGetPlatformIDs(num_platforms,platform_ids,NULL) failed\n"); return -1; }
 	// NVIDIA CUDA is idx=1
-	// ALTERA is idx=0
-	platform_id = platform_ids[0];
+	platform_id = platform_ids[1];
 
 	for(int i=0; i<num_platforms; i++){
 		clGetPlatformInfo(platform_ids[i], CL_PLATFORM_NAME, 30, platform_name, NULL);
