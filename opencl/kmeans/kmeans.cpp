@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 #include "kmeans.h"
+#include <omp.h>
 
 #ifdef WIN
 	#include <windows.h>
@@ -276,8 +277,13 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 	clFinish(cmd_queue);
 	err = clEnqueueReadBuffer(cmd_queue, d_membership, 1, 0, n_points * sizeof(int), membership_OCL, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: Memcopy Out\n"); return -1; }
-	
+	int numThreads = 4;
 	delta = 0;
+	
+
+	
+	omp_set_num_threads(8);
+	#pragma omp parallel for schedule(guided) private(i,j) shared(membership_OCL, membership,new_centers)  reduction (+:delta)
 	for (i = 0; i < n_points; i++)
 	{
 		int cluster_id = membership_OCL[i];
@@ -292,6 +298,6 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 			new_centers[cluster_id][j] += feature[i][j];
 		}
 	}
-
+        
 	return delta;
 }

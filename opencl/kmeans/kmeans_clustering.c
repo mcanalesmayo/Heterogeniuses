@@ -99,20 +99,25 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
 	if (nclusters > npoints)
 		nclusters = npoints;
 
+omp_set_num_threads(8);
+
+
     /* allocate space for and initialize returning variable clusters[] */
     clusters    = (float**) malloc(nclusters *             sizeof(float*));
     clusters[0] = (float*)  malloc(nclusters * nfeatures * sizeof(float));
-    for (i=1; i<nclusters; i++)
+    for (i=1; i<nclusters; i++) 
         clusters[i] = clusters[i-1] + nfeatures;
 
 	/* initialize the random clusters */
 	initial = (int *) malloc (npoints * sizeof(int));
+#pragma omp for private(i)  schedule(guided)
 	for (i = 0; i < npoints; i++)
 	{
 		initial[i] = i;
 	}
 	initial_points = npoints;
 
+//!TODO: #pragma omp for private(i,j) schedule(guided)
     /* randomly pick cluster centers */
     for (i=0; i<nclusters && initial_points >= 0; i++) {
 		//n = (int)rand() % initial_points;		
@@ -129,6 +134,7 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
 		n++;
     }
 
+#pragma omp for private(i) schedule(guided)
 	/* initialize the membership to -1 for all */
     for (i=0; i < npoints; i++)
 	  membership[i] = -1;
@@ -138,6 +144,7 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
 
     new_centers    = (float**) malloc(nclusters *            sizeof(float*));
     new_centers[0] = (float*)  calloc(nclusters * nfeatures, sizeof(float));
+    #pragma omp for private(i) schedule(guided) 
     for (i=1; i<nclusters; i++)
         new_centers[i] = new_centers[i-1] + nfeatures;
 
@@ -154,9 +161,9 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
 								   new_centers_len,	/* out: number of points in each cluster */
 								   new_centers		/* sum of points in each cluster */
 								   );
-
 		/* replace old cluster centers with new_centers */
 		/* CPU side of reduction */
+	#pragma omp parallel for schedule(guided) private(i,j) shared(new_centers_len, clusters, new_centers)
 		for (i=0; i<nclusters; i++) {
 			for (j=0; j<nfeatures; j++) {
 				if (new_centers_len[i] > 0)
