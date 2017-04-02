@@ -38,7 +38,7 @@
 #elif defined(RD_WG_SIZE)
         #define BLOCK_SIZE RD_WG_SIZE
 #else
-        #define BLOCK_SIZE 512
+        #define BLOCK_SIZE 256
 #endif
 
 #ifdef RD_WG_SIZE_1_0
@@ -48,7 +48,7 @@
 #elif defined(RD_WG_SIZE)
      #define BLOCK_SIZE2 RD_WG_SIZE
 #else
-     #define BLOCK_SIZE2 512
+     #define BLOCK_SIZE2 256
 #endif
 
 
@@ -184,12 +184,11 @@ int allocate(int n_points, int n_features, int n_clusters, float **feature)
 	
 	size_t global_work[3] = { n_points, 1, 1 };
 	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
-	/*size_t local_work_size= BLOCK_SIZE; // work group size is defined by RD_WG_SIZE_0 or RD_WG_SIZE_0_0 2014/06/10 17:00:51
-	if(global_work[0]%local_work_size !=0)
-	  global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
+	size_t local_work_size= BLOCK_SIZE; // work group size is defined by RD_WG_SIZE_0 or RD_WG_SIZE_0_0 2014/06/10 17:00:51
+	if(global_work[0]%local_work_size !=0) global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
 
-	err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, &local_work_size, 0, 0, 0);*/
-	err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, NULL, 0, 0, 0);
+	err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, &local_work_size, 0, 0, 0);
+	//err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, NULL, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 	
 	posix_memalign((void **) &membership_OCL, ALIGNMENT, n_points * sizeof(int));
@@ -228,13 +227,6 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 	int i, j, k;
 	cl_int err = 0;
 	
-	size_t global_work[3] = { n_points, 1, 1 }; 
-
-	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
-	/*size_t local_work_size=BLOCK_SIZE2; // work group size is defined by RD_WG_SIZE_1 or RD_WG_SIZE_1_0 2014/06/10 17:00:41
-	if(global_work[0]%local_work_size !=0)
-	  global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;*/
-	
 	err = clEnqueueWriteBuffer(cmd_queue, d_cluster, 1, 0, n_clusters * n_features * sizeof(float), clusters[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_cluster (size:%d) => %d\n", n_points, err); return -1; }
 
@@ -249,8 +241,14 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 	clSetKernelArg(kernel_s, 6, sizeof(cl_int), (void*) &offset);
 	clSetKernelArg(kernel_s, 7, sizeof(cl_int), (void*) &size);
 
-	//err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, &local_work_size, 0, 0, 0);
-	err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, NULL, 0, 0, 0);
+	size_t global_work[3] = { n_points, 1, 1 }; 
+
+	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
+	size_t local_work_size=BLOCK_SIZE2; // work group size is defined by RD_WG_SIZE_1 or RD_WG_SIZE_1_0 2014/06/10 17:00:41
+	if(global_work[0]%local_work_size !=0) global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
+
+	err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, &local_work_size, 0, 0, 0);
+	//err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, NULL, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 	clFinish(cmd_queue);
 	err = clEnqueueReadBuffer(cmd_queue, d_membership, 1, 0, n_points * sizeof(int), membership_OCL, 0, 0, 0);
