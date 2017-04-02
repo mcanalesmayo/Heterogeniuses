@@ -35,4 +35,4 @@ rmse.o: rmse.c
 	$(CC) $(CC_FLAGS) rmse.c -c
 
 clean:
-	rm -f *.o *~ kmeans *.linkinfo
+	rm -f *.o *~ *.linkinfo

@@ -5,6 +5,10 @@
 #include <iostream>
 #include <string>
 #include "kmeans.h"
+#include "CL/opencl.h"
+#include "AOCLUtils/aocl_utils.h"
+
+#define ALIGNMENT 64
 
 #ifdef WIN
 	#include <windows.h>
@@ -52,27 +56,35 @@
 
 
 // local variables
+static cl_platform_id  *platform_ids;
 static cl_context	    context;
 static cl_command_queue cmd_queue;
 static cl_device_type   device_type;
-static cl_device_id   * device_list;
+static cl_device_id    *device_list;
 static cl_int           num_devices;
 
-static int initialize(int use_gpu)
+static int initialize()
 {
 	cl_int result;
 	size_t size;
+	cl_uint num_platforms;
 
-	// create OpenCL context
-	cl_platform_id platform_id;
-	if (clGetPlatformIDs(1, &platform_id, NULL) != CL_SUCCESS) { printf("ERROR: clGetPlatformIDs(1,*,0) failed\n"); return -1; }
-	cl_context_properties ctxprop[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)platform_id, 0};
-	device_type = use_gpu ? CL_DEVICE_TYPE_GPU : CL_DEVICE_TYPE_CPU;
-	context = clCreateContextFromType( ctxprop, device_type, NULL, NULL, NULL );
-	if( !context ) { printf("ERROR: clCreateContextFromType(%s) failed\n", use_gpu ? "GPU" : "CPU"); return -1; }
+	if (clGetPlatformIDs(0, NULL, &num_platforms) != CL_SUCCESS) { printf("ERROR: clGetPlatformIDs(0,NULL,&num_platforms) failed\n"); return -1; }
+	printf("Number of platforms: %d\n", num_platforms);
+	platform_ids = (cl_platform_id *) malloc(num_platforms * sizeof(cl_platform_id));
+	if (clGetPlatformIDs(num_platforms, platform_ids, NULL) != CL_SUCCESS) { printf("ERROR: clGetPlatformIDs(num_platforms,platform_ids,NULL) failed\n"); return -1; }
 
-	// get the list of GPUs
-	result = clGetContextInfo( context, CL_CONTEXT_DEVICES, 0, NULL, &size );
+	// Intel Altera is idx=0
+	// cl_context_properties:
+	// Specifies a list of context property names and their corresponding values. Each property name is immediately followed by the corresponding desired value.
+	// The list is terminated with 0. properties can be NULL in which case the platform that is selected is implementation-defined.
+	// The list of supported properties is described in the table below.
+	cl_context_properties ctxprop[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)platform_ids[0], 0};
+	context = clCreateContextFromType(ctxprop, CL_DEVICE_TYPE_ACCELERATOR, NULL, NULL, NULL);
+	if( !context ) { printf("ERROR: clCreateContextFromType(%s) failed\n", "FPGA"); return -1; }
+
+	// get the list of FPGAs
+	result = clGetContextInfo(context, CL_CONTEXT_DEVICES, 0, NULL, &size);
 	num_devices = (int) (size / sizeof(cl_device_id));
 	
 	if( result != CL_SUCCESS || num_devices < 1 ) { printf("ERROR: clGetContextInfo() failed\n"); return -1; }
@@ -82,8 +94,8 @@ static int initialize(int use_gpu)
 	if( result != CL_SUCCESS ) { printf("ERROR: clGetContextInfo() failed\n"); return -1; }
 
 	// create command queue for the first device
-	cmd_queue = clCreateCommandQueue( context, device_list[0], 0, NULL );
-	if( !cmd_queue ) { printf("ERROR: clCreateCommandQueue() failed\n"); return -1; }
+	cmd_queue = clCreateCommandQueue(context, device_list[0], 0, NULL);
+	if( !cmd_queue ) { printf("ERROR: clCreateCommandQueue() FPGA failed\n"); return -1; }
 
 	return 0;
 }
@@ -122,36 +134,24 @@ float *center_d;
 
 int allocate(int n_points, int n_features, int n_clusters, float **feature)
 {
-
-	int sourcesize = 1024*1024;
-	char * source = (char *)calloc(sourcesize, sizeof(char)); 
-	if(!source) { printf("ERROR: calloc(%d) failed\n", sourcesize); return -1; }
-
-	// read the kernel core source
-	char * tempchar = "./kmeans.cl";
-	FILE * fp = fopen(tempchar, "rb"); 
-	if(!fp) { printf("ERROR: unable to open '%s'\n", tempchar); return -1; }
-	fread(source + strlen(source), sourcesize, 1, fp);
-	fclose(fp);
-		
 	// OpenCL initialization
-	int use_gpu = 1;
-	if(initialize(use_gpu)) return -1;
+	if(initialize()) return -1;
 
 	// compile kernel
 	cl_int err = 0;
-	const char * slist[2] = { source, 0 };
-	cl_program prog = clCreateProgramWithSource(context, 1, slist, NULL, &err);
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateProgramWithSource() => %d\n", err); return -1; }
-	err = clBuildProgram(prog, 0, NULL, NULL, NULL, NULL);
-	{ // show warnings/errors
-	//	static char log[65536]; memset(log, 0, sizeof(log));
-	//	cl_device_id device_id = 0;
-	//	err = clGetContextInfo(context, CL_CONTEXT_DEVICES, sizeof(device_id), &device_id, NULL);
-	//	clGetProgramBuildInfo(prog, device_id, CL_PROGRAM_BUILD_LOG, sizeof(log)-1, log, NULL);
-	//	if(err || strstr(log,"warning:") || strstr(log, "error:")) printf("<<<<\n%s\n>>>>\n", log);
-	}
-	if(err != CL_SUCCESS) { printf("ERROR: clBuildProgram() => %d\n", err); return -1; }
+
+	/* ------------ */
+	/* FPGA program */
+	/* ------------ */
+
+	cl_device_id device = device_list[0];
+
+	// Create the FPGA program.
+  	std::string binary_file = aocl_utils::getBoardBinaryFile("/home/mcanales/Heterogeniuses/opencl/kmeans/kmeans", device);
+  	printf("Using AOCX: %s\n", binary_file.c_str());
+  	cl_program prog = aocl_utils::createProgramFromBinary(context, binary_file.c_str(), &device, 1);
+  	err = clBuildProgram(prog, 0, NULL, NULL, NULL, NULL);
+  	if (err != CL_SUCCESS) { printf("ERROR: FPGA clBuildProgram() => %d\n", err); return -1; }
 	
 	char * kernel_kmeans_c  = "kmeans_kernel_c";
 	char * kernel_swap  = "kmeans_swap";	
