@@ -107,6 +107,7 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
 
 	/* initialize the random clusters */
 	initial = (int *) malloc (npoints * sizeof(int));
+	#pragma omp parallel for private(i) schedule(static)
 	for (i = 0; i < npoints; i++)
 	{
 		initial[i] = i;
@@ -130,13 +131,15 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
     }
 
 	/* initialize the membership to -1 for all */
-    for (i=0; i < npoints; i++)
-	  membership[i] = -1;
+	#pragma omp parallel for private(i) schedule(guided)
+    for (i=0; i < npoints; i++) membership[i] = -1;
 
     /* allocate space for and initialize new_centers_len and new_centers */
-    posix_memalign((void **) &new_centers_len, ALIGNMENT, nclusters * sizeof(int));
-	posix_memalign((void **) &new_centers, ALIGNMENT, nclusters * sizeof(float *));
-    posix_memalign((void **) &new_centers[0], ALIGNMENT, nclusters * nfeatures * sizeof(float));
+    new_centers_len = (int*) calloc(nclusters, sizeof(int));
+    new_centers    = (float**) malloc(nclusters *            sizeof(float*));
+    new_centers[0] = (float*)  calloc(nclusters * nfeatures, sizeof(float));
+
+    #pragma omp for private(i) schedule(guided)
     for (i=1; i<nclusters; i++)
         new_centers[i] = new_centers[i-1] + nfeatures;
 
@@ -156,6 +159,7 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
 
 		/* replace old cluster centers with new_centers */
 		/* CPU side of reduction */
+		#pragma omp parallel for schedule(guided) private(i,j) shared(new_centers_len,clusters,new_centers)
 		for (i=0; i<nclusters; i++) {
 			for (j=0; j<nfeatures; j++) {
 				if (new_centers_len[i] > 0)

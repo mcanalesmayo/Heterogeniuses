@@ -7,6 +7,7 @@
 #include "kmeans.h"
 #include "CL/opencl.h"
 #include "AOCLUtils/aocl_utils.h"
+#include <omp.h>
 
 #ifdef WIN
 	#include <windows.h>
@@ -38,7 +39,7 @@
 #elif defined(RD_WG_SIZE)
         #define BLOCK_SIZE RD_WG_SIZE
 #else
-        #define BLOCK_SIZE 256
+        #define BLOCK_SIZE 512
 #endif
 
 #ifdef RD_WG_SIZE_1_0
@@ -48,7 +49,7 @@
 #elif defined(RD_WG_SIZE)
      #define BLOCK_SIZE2 RD_WG_SIZE
 #else
-     #define BLOCK_SIZE2 256
+     #define BLOCK_SIZE2 512
 #endif
 
 
@@ -184,11 +185,11 @@ int allocate(int n_points, int n_features, int n_clusters, float **feature)
 	
 	size_t global_work[3] = { n_points, 1, 1 };
 	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
-	size_t local_work_size= BLOCK_SIZE; // work group size is defined by RD_WG_SIZE_0 or RD_WG_SIZE_0_0 2014/06/10 17:00:51
+	/*size_t local_work_size= BLOCK_SIZE; // work group size is defined by RD_WG_SIZE_0 or RD_WG_SIZE_0_0 2014/06/10 17:00:51
 	if(global_work[0]%local_work_size !=0) global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
 
-	err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, &local_work_size, 0, 0, 0);
-	//err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, NULL, 0, 0, 0);
+	err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, &local_work_size, 0, 0, 0);*/
+	err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, NULL, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 	
 	posix_memalign((void **) &membership_OCL, ALIGNMENT, n_points * sizeof(int));
@@ -244,20 +245,23 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 	size_t global_work[3] = { n_points, 1, 1 }; 
 
 	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
-	size_t local_work_size=BLOCK_SIZE2; // work group size is defined by RD_WG_SIZE_1 or RD_WG_SIZE_1_0 2014/06/10 17:00:41
+	/*size_t local_work_size=BLOCK_SIZE2; // work group size is defined by RD_WG_SIZE_1 or RD_WG_SIZE_1_0 2014/06/10 17:00:41
 	if(global_work[0]%local_work_size !=0) global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
 
-	err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, &local_work_size, 0, 0, 0);
-	//err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, NULL, 0, 0, 0);
+	err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, &local_work_size, 0, 0, 0);*/
+	err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, NULL, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 	clFinish(cmd_queue);
 	err = clEnqueueReadBuffer(cmd_queue, d_membership, 1, 0, n_points * sizeof(int), membership_OCL, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: Memcopy Out\n"); return -1; }
 	
 	delta = 0;
+	omp_set_num_threads(8);
+	int cluster_id;
+	//#pragma omp parallel for schedule(static) private(i,j,cluster_id) shared(membership_OCL,membership,new_centers,new_centers_len) reduction(+:delta)
 	for (i = 0; i < n_points; i++)
 	{
-		int cluster_id = membership_OCL[i];
+		cluster_id = membership_OCL[i];
 		new_centers_len[cluster_id]++;
 		if (membership_OCL[i] != membership[i])
 		{
