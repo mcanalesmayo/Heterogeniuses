@@ -8,8 +8,6 @@
 #include "CL/opencl.h"
 #include "AOCLUtils/aocl_utils.h"
 
-#define ALIGNMENT 64
-
 #ifdef WIN
 	#include <windows.h>
 #else
@@ -40,7 +38,7 @@
 #elif defined(RD_WG_SIZE)
         #define BLOCK_SIZE RD_WG_SIZE
 #else
-        #define BLOCK_SIZE 256
+        #define BLOCK_SIZE 512
 #endif
 
 #ifdef RD_WG_SIZE_1_0
@@ -50,7 +48,7 @@
 #elif defined(RD_WG_SIZE)
      #define BLOCK_SIZE2 RD_WG_SIZE
 #else
-     #define BLOCK_SIZE2 256
+     #define BLOCK_SIZE2 512
 #endif
 
 
@@ -85,6 +83,7 @@ static int initialize()
 
 	// get the list of FPGAs
 	result = clGetContextInfo(context, CL_CONTEXT_DEVICES, 0, NULL, &size);
+
 	num_devices = (int) (size / sizeof(cl_device_id));
 	
 	if( result != CL_SUCCESS || num_devices < 1 ) { printf("ERROR: clGetContextInfo() failed\n"); return -1; }
@@ -96,6 +95,8 @@ static int initialize()
 	// create command queue for the first device
 	cmd_queue = clCreateCommandQueue(context, device_list[0], 0, NULL);
 	if( !cmd_queue ) { printf("ERROR: clCreateCommandQueue() FPGA failed\n"); return -1; }
+
+	free(platform_ids);
 
 	return 0;
 }
@@ -190,7 +191,7 @@ int allocate(int n_points, int n_features, int n_clusters, float **feature)
 	err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, &local_work_size, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 	
-	membership_OCL = (int*) malloc(n_points * sizeof(int));
+	posix_memalign((void **) &membership_OCL, ALIGNMENT, n_points * sizeof(int));
 }
 
 void deallocateMemory()

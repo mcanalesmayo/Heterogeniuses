@@ -100,8 +100,8 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
 		nclusters = npoints;
 
     /* allocate space for and initialize returning variable clusters[] */
-    clusters    = (float**) malloc(nclusters *             sizeof(float*));
-    clusters[0] = (float*)  malloc(nclusters * nfeatures * sizeof(float));
+    posix_memalign((void **) &clusters, ALIGNMENT, nclusters * sizeof(float *));
+    posix_memalign((void **) &clusters[0], ALIGNMENT, nclusters * nfeatures * sizeof(float));
     for (i=1; i<nclusters; i++)
         clusters[i] = clusters[i-1] + nfeatures;
 
@@ -134,10 +134,10 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
 	  membership[i] = -1;
 
     /* allocate space for and initialize new_centers_len and new_centers */
-    new_centers_len = (int*) calloc(nclusters, sizeof(int));
+    posix_memalign((void **) &new_centers_len, ALIGNMENT, nclusters * sizeof(int));
 
-    new_centers    = (float**) malloc(nclusters *            sizeof(float*));
-    new_centers[0] = (float*)  calloc(nclusters * nfeatures, sizeof(float));
+	posix_memalign((void **) &new_centers, ALIGNMENT, nclusters * sizeof(float *));
+    posix_memalign((void **) &new_centers[0], ALIGNMENT, nclusters * nfeatures * sizeof(float));
     for (i=1; i<nclusters; i++)
         new_centers[i] = new_centers[i-1] + nfeatures;
 
@@ -171,6 +171,7 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
     free(new_centers[0]);
     free(new_centers);
     free(new_centers_len);
+    free(initial);
 
     return clusters;
 }

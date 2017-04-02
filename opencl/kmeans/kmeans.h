@@ -37,6 +37,8 @@
 /*POSSIBILITY OF SUCH DAMAGE.                                                 */
 /******************************************************************************/
 
+#define ALIGNMENT 64
+
 #ifndef _H_FUZZY_KMEANS
 #define _H_FUZZY_KMEANS
 
