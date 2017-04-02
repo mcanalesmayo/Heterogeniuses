@@ -139,6 +139,9 @@ static int initialize(int use_gpu)
 
 	devices.reset(getDevices(platform, CL_DEVICE_TYPE_ALL, &num_devices));
 
+
+	
+
 	// We'll just use the first device.
 	device = devices[0];
 
