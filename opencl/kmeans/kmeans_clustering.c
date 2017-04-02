@@ -135,7 +135,6 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
 
     /* allocate space for and initialize new_centers_len and new_centers */
     posix_memalign((void **) &new_centers_len, ALIGNMENT, nclusters * sizeof(int));
-
 	posix_memalign((void **) &new_centers, ALIGNMENT, nclusters * sizeof(float *));
     posix_memalign((void **) &new_centers[0], ALIGNMENT, nclusters * nfeatures * sizeof(float));
     for (i=1; i<nclusters; i++)

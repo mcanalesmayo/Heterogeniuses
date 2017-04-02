@@ -169,9 +169,9 @@ int setup(int argc, char **argv) {
         read(infile, &nfeatures, sizeof(int));        
 
         /* allocate space for features[][] and read attributes of all objects */
-        buf         = (float*) malloc(npoints*nfeatures*sizeof(float));
-        features    = (float**)malloc(npoints*          sizeof(float*));
-        features[0] = (float*) malloc(npoints*nfeatures*sizeof(float));
+        posix_memalign((void **) &buf, ALIGNMENT, npoints*nfeatures*sizeof(float));
+        posix_memalign((void **) &features, ALIGNMENT, npoints*sizeof(float*));
+        posix_memalign((void **) &features[0], ALIGNMENT, npoints*nfeatures*sizeof(float));
         for (i=1; i<npoints; i++)
             features[i] = features[i-1] + nfeatures;
 
@@ -198,9 +198,9 @@ int setup(int argc, char **argv) {
         }        
 
         /* allocate space for features[] and read attributes of all objects */
-        buf         = (float*) malloc(npoints*nfeatures*sizeof(float));
-        features    = (float**)malloc(npoints*          sizeof(float*));
-        features[0] = (float*) malloc(npoints*nfeatures*sizeof(float));
+        posix_memalign((void **) &buf, ALIGNMENT, npoints*nfeatures*sizeof(float));
+        posix_memalign((void **) &features, ALIGNMENT, npoints*sizeof(float*));
+        posix_memalign((void **) &features[0], ALIGNMENT, npoints*nfeatures*sizeof(float));
         for (i=1; i<npoints; i++)
             features[i] = features[i-1] + nfeatures;
         rewind(infile);
