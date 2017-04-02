@@ -3,9 +3,9 @@
 #endif
 
 __kernel void
-kmeans_kernel_c(__global float  *feature,   
-			  __global float  *clusters,
-			  __global int    *membership,
+kmeans_kernel_c(__global float* restrict feature,   
+			  __global float* restrict clusters,
+			  __global int* restrict membership,
 			    int     npoints,
 				int     nclusters,
 				int     nfeatures,
@@ -43,8 +43,8 @@ kmeans_kernel_c(__global float  *feature,
 }
 
 __kernel void
-kmeans_swap(__global float  *feature,   
-			__global float  *feature_swap,
+kmeans_swap(__global float* restrict feature,   
+			__global float* restrict feature_swap,
 			int     npoints,
 			int     nfeatures
 ){
