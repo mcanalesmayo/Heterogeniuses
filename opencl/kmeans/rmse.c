@@ -24,13 +24,12 @@ extern double wtime(void);
 /* multi-dimensional spatial Euclid distance square */
 __inline
 float euclid_dist_2(float *pt1,
-                    float *pt2,
-                    int    numdims)
+                    float *pt2)
 {
     int i;
     float ans=0.0;
 
-    for (i=0; i<numdims; i++)
+    for (i=0; i<NFEATURES; i++)
         ans += (pt1[i]-pt2[i]) * (pt1[i]-pt2[i]);
 
     return(ans);
@@ -38,18 +37,16 @@ float euclid_dist_2(float *pt1,
 
 /*----< find_nearest_point() >-----------------------------------------------*/
 __inline
-int find_nearest_point(float  *pt,          /* [nfeatures] */
-                       int     nfeatures,
-                       float  **pts,         /* [npts][nfeatures] */
-                       int     npts)
+int find_nearest_point(float  *pt,
+                       float  **pts)
 {
     int index, i;
     float max_dist=FLT_MAX;
 
     /* find the cluster center id with min distance to pt */
-    for (i=0; i<npts; i++) {
+    for (i=0; i<NCLUSTERS; i++) {
         float dist;
-        dist = euclid_dist_2(pt, pts[i], nfeatures);  /* no need square root */
+        dist = euclid_dist_2(pt, pts[i]);  /* no need square root */
         if (dist < max_dist) {
             max_dist = dist;
             index    = i;
@@ -59,11 +56,9 @@ int find_nearest_point(float  *pt,          /* [nfeatures] */
 }
 
 /*----< rms_err(): calculates RMSE of clustering >-------------------------------------*/
-float rms_err	(float **feature,         /* [npoints][nfeatures] */
-                 int     nfeatures,
-                 int     npoints,
-                 float **cluster_centres, /* [nclusters][nfeatures] */
-                 int     nclusters)
+float rms_err	(float feature[][NFEATURES],   /* [NPOINTS][NFEATURES] */
+                 float **cluster_centres              /* [NCLUSTERS][NFEATURES] */
+                )
 {
     int    i;
 	int	   nearest_cluster_index;	/* cluster center id with min distance to pt */
@@ -73,22 +68,18 @@ float rms_err	(float **feature,         /* [npoints][nfeatures] */
     /* calculate and sum the sqaure of euclidean distance*/	
     #pragma omp parallel for \
                 shared(feature,cluster_centres) \
-                firstprivate(npoints,nfeatures,nclusters) \
                 private(i, nearest_cluster_index) \
                 schedule (static)	
-    for (i=0; i<npoints; i++) {
-        nearest_cluster_index = find_nearest_point(feature[i], 
-													nfeatures, 
-													cluster_centres, 
-													nclusters);
+    for (i=0; i<NPOINTS; i++) {
+        nearest_cluster_index = find_nearest_point(feature[i],
+													cluster_centres);
 
 		sum_euclid += euclid_dist_2(feature[i],
-									cluster_centres[nearest_cluster_index],
-									nfeatures);
+									cluster_centres[nearest_cluster_index]);
 		
     }	
 	/* divide by n, then take sqrt */
-	ret = sqrt(sum_euclid / npoints);
+	ret = sqrt(sum_euclid / NPOINTS);
 
     return(ret);
 }

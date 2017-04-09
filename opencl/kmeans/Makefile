@@ -16,25 +16,25 @@ ALTERA_INC_DIRS := ../../common/inc
 ALTERA_SRCS := ../../common/src/AOCLUtils/*.cpp
 
 kmeans: cluster.o getopt.o read_input.o kmeans_clustering.o rmse.o
-	$(CC) $(KERNEL_DIM) $(CC_FLAGS) kmeans.cpp cluster.o getopt.o read_input.o kmeans_clustering.o rmse.o $(ALTERA_SRCS) -o kmeans.o -lOpenCL $(AOCL_COMPILE_CONFIG) $(AOCL_LINK_CONFIG) -I$(CUDA_OCL_INC) $(foreach D,$(ALTERA_INC_DIRS),-I$D) -L$(CUDA_OCL_LIB) $(foreach D,$(ALTERA_LIB_DIRS),-L$D) $(foreach L,$(ALTERA_LIBS),-l$L)
+	$(CC) $(KERNEL_DIM) $(CC_FLAGS) -D NPOINTS=$(NPOINTS) -D NFEATURES=$(NFEATURES) -D NCLUSTERS=$(NCLUSTERS) kmeans.cpp cluster.o getopt.o read_input.o kmeans_clustering.o rmse.o $(ALTERA_SRCS) -o kmeans.o -lOpenCL $(AOCL_COMPILE_CONFIG) $(AOCL_LINK_CONFIG) -I$(CUDA_OCL_INC) $(foreach D,$(ALTERA_INC_DIRS),-I$D) -L$(CUDA_OCL_LIB) $(foreach D,$(ALTERA_LIB_DIRS),-L$D) $(foreach L,$(ALTERA_LIBS),-l$L)
 
 %.o: %.[ch]
-	$(CC) $(CC_FLAGS) $< -c
+	$(CC) $(CC_FLAGS) -D NPOINTS=$(NPOINTS) -D NFEATURES=$(NFEATURES) -D NCLUSTERS=$(NCLUSTERS) $< -c
 
 cluster.o: cluster.c 
-	$(CC) $(CC_FLAGS) cluster.c -c
+	$(CC) $(CC_FLAGS) -D NPOINTS=$(NPOINTS) -D NFEATURES=$(NFEATURES) -D NCLUSTERS=$(NCLUSTERS) cluster.c -c
 
 getopt.o: getopt.c 
-	$(CC) $(CC_FLAGS) getopt.c -c
+	$(CC) $(CC_FLAGS) -D NPOINTS=$(NPOINTS) -D NFEATURES=$(NFEATURES) -D NCLUSTERS=$(NCLUSTERS) getopt.c -c
 
 kmeans_clustering.o: kmeans_clustering.c
-	$(CC) $(CC_FLAGS) kmeans_clustering.c -c
+	$(CC) $(CC_FLAGS) -D NPOINTS=$(NPOINTS) -D NFEATURES=$(NFEATURES) -D NCLUSTERS=$(NCLUSTERS) kmeans_clustering.c -c
 
 kmeans.o: kmeans.c 
-	$(CC) $(CC_FLAGS) read_input.c -c
+	$(CC) $(CC_FLAGS) -D NPOINTS=$(NPOINTS) -D NFEATURES=$(NFEATURES) -D NCLUSTERS=$(NCLUSTERS) read_input.c -c
 
 rmse.o: rmse.c
-	$(CC) $(CC_FLAGS) rmse.c -c
+	$(CC) $(CC_FLAGS) -D NPOINTS=$(NPOINTS) -D NFEATURES=$(NFEATURES) -D NCLUSTERS=$(NCLUSTERS) rmse.c -c
 
 clean:
 	rm -f *.o *~ *.linkinfo

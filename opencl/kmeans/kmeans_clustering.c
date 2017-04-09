@@ -73,52 +73,44 @@
 extern double wtime(void);
 
 /*----< kmeans_clustering() >---------------------------------------------*/
-float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
-                          int     nfeatures,
-                          int     npoints,
-                          int     nclusters,
+float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATURES] */
                           float   threshold,
-                          int    *membership) /* out: [npoints] */
+                          int    *membership) /* out: [NPOINTS] */
 {    
     int      i, j, n = 0;				/* counters */
 	int		 loop=0, temp;
-    int     *new_centers_len;	/* [nclusters]: no. of points in each cluster */
+    int     *new_centers_len;	/* [NCLUSTERS]: no. of points in each cluster */
     float    delta;				/* if the point moved */
-    float  **clusters;			/* out: [nclusters][nfeatures] */
-    float  **new_centers;		/* [nclusters][nfeatures] */
+    float    **clusters;			/* out: [NCLUSTERS][NFEATURES] */
+    float  **new_centers;		/* [NCLUSTERS][NFEATURES] */
 
-	int     *initial;			/* used to hold the index of points not yet selected
+	int     initial[NPOINTS];		/* used to hold the index of points not yet selected
 								   prevents the "birthday problem" of dual selection (?)
 								   considered holding initial cluster indices, but changed due to
 								   possible, though unlikely, infinite loops */
 	int      initial_points;
 	int		 c = 0;
 
-	/* nclusters should never be > npoints
-	   that would guarantee a cluster without points */
-	if (nclusters > npoints)
-		nclusters = npoints;
-
     /* allocate space for and initialize returning variable clusters[] */
-    posix_memalign((void **) &clusters, ALIGNMENT, nclusters * sizeof(float *));
-    posix_memalign((void **) &clusters[0], ALIGNMENT, nclusters * nfeatures * sizeof(float));
-    for (i=1; i<nclusters; i++)
-        clusters[i] = clusters[i-1] + nfeatures;
+    posix_memalign((void **) &clusters, ALIGNMENT, NCLUSTERS * sizeof(float *));
+    posix_memalign((void **) &clusters[0], ALIGNMENT, NCLUSTERS * NFEATURES * sizeof(float));
+
+    for (i=1; i<NCLUSTERS; i++)
+        clusters[i] = clusters[i-1] + NFEATURES;
 
 	/* initialize the random clusters */
-	initial = (int *) malloc (npoints * sizeof(int));
 	#pragma omp parallel for private(i) schedule(static)
-	for (i = 0; i < npoints; i++)
+	for (i = 0; i < NPOINTS; i++)
 	{
 		initial[i] = i;
 	}
-	initial_points = npoints;
+	initial_points = NPOINTS;
 
     /* randomly pick cluster centers */
-    for (i=0; i<nclusters && initial_points >= 0; i++) {
+    for (i=0; i<NCLUSTERS && initial_points >= 0; i++) {
 		//n = (int)rand() % initial_points;		
 		
-        for (j=0; j<nfeatures; j++)
+        for (j=0; j<NFEATURES; j++)
             clusters[i][j] = feature[initial[n]][j];	// remapped
 
 		/* swap the selected index to the end (not really necessary,
@@ -132,27 +124,24 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
 
 	/* initialize the membership to -1 for all */
 	#pragma omp parallel for private(i) schedule(guided)
-    for (i=0; i < npoints; i++) membership[i] = -1;
+    for (i=0; i < NPOINTS; i++) membership[i] = -1;
 
     /* allocate space for and initialize new_centers_len and new_centers */
-    new_centers_len = (int*) calloc(nclusters, sizeof(int));
-    new_centers    = (float**) malloc(nclusters *            sizeof(float*));
-    new_centers[0] = (float*)  calloc(nclusters * nfeatures, sizeof(float));
+    new_centers_len = (int*) calloc(NCLUSTERS, sizeof(int));
+    new_centers    = (float**) malloc(NCLUSTERS *            sizeof(float*));
+    new_centers[0] = (float*)  calloc(NCLUSTERS * NFEATURES, sizeof(float));
 
     #pragma omp for private(i) schedule(guided)
-    for (i=1; i<nclusters; i++)
-        new_centers[i] = new_centers[i-1] + nfeatures;
+    for (i=1; i<NCLUSTERS; i++)
+        new_centers[i] = new_centers[i-1] + NFEATURES;
 
 	/* iterate until convergence */
 	do {
         delta = 0.0;
 		// CUDA
-		delta = (float) kmeansOCL(feature,			/* in: [npoints][nfeatures] */
-								   nfeatures,		/* number of attributes for each point */
-								   npoints,			/* number of data points */
-								   nclusters,		/* number of clusters */
+		delta = (float) kmeansOCL(feature,			/* in: [NPOINTS][NFEATURES] */
 								   membership,		/* which cluster the point belongs to */
-								   clusters,		/* out: [nclusters][nfeatures] */
+								   clusters,		/* out: [NCLUSTERS][NFEATURES] */
 								   new_centers_len,	/* out: number of points in each cluster */
 								   new_centers		/* sum of points in each cluster */
 								   );
@@ -160,8 +149,8 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
 		/* replace old cluster centers with new_centers */
 		/* CPU side of reduction */
 		#pragma omp parallel for schedule(guided) private(i,j) shared(new_centers_len,clusters,new_centers)
-		for (i=0; i<nclusters; i++) {
-			for (j=0; j<nfeatures; j++) {
+		for (i=0; i<NCLUSTERS; i++) {
+			for (j=0; j<NFEATURES; j++) {
 				if (new_centers_len[i] > 0)
 					clusters[i][j] = new_centers[i][j] / new_centers_len[i];	/* take average i.e. sum/n */
 				new_centers[i][j] = 0.0;	/* set back to 0 */
@@ -174,7 +163,6 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
     free(new_centers[0]);
     free(new_centers);
     free(new_centers_len);
-    free(initial);
 
     return clusters;
 }
