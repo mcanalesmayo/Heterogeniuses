@@ -127,13 +127,18 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
     for (i=0; i < NPOINTS; i++) membership[i] = -1;
 
     /* allocate space for and initialize new_centers_len and new_centers */
-    new_centers_len = (int*) calloc(NCLUSTERS, sizeof(int));
-    new_centers    = (float**) malloc(NCLUSTERS *            sizeof(float*));
-    new_centers[0] = (float*)  calloc(NCLUSTERS * NFEATURES, sizeof(float));
+    posix_memalign((void **) &new_centers_len, ALIGNMENT, NCLUSTERS * sizeof(int));
+    posix_memalign((void **) &new_centers, ALIGNMENT, NCLUSTERS * sizeof(float *));
+    posix_memalign((void **) &new_centers[0], ALIGNMENT, NCLUSTERS * NFEATURES * sizeof(float));
 
-    #pragma omp for private(i) schedule(guided)
-    for (i=1; i<NCLUSTERS; i++)
+    for (i=1; i<NCLUSTERS; i++){
+        new_centers_len[i] = 0;
         new_centers[i] = new_centers[i-1] + NFEATURES;
+        #pragma omp for private(i) schedule(guided)
+        for(j=0; j<NFEATURES; j++){
+            new_centers[i][j] = 0;
+        }
+    }
 
 	/* iterate until convergence */
 	do {

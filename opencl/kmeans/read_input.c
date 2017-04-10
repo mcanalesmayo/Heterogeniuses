@@ -111,8 +111,8 @@ int setup(int argc, char **argv) {
 
 		float	threshold = 0.001;		/* default value */
 		float	len;
-		         
-		float   features[NPOINTS][NFEATURES];
+
+		float   features[NPOINTS][NFEATURES] __attribute__ ((aligned (ALIGNMENT)));
 		float **cluster_centres=NULL;
 		int		i, j, index;
 		int		nloops = 1;				/* default value */
