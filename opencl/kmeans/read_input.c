@@ -201,6 +201,20 @@ int setup(int argc, char **argv) {
     
 	cluster_timing = omp_get_wtime() - cluster_timing;
 
+    /* =============== Command Line Output =============== */
+
+    /* cluster center coordinates
+       :displayed only for when k=1*/
+    if(isOutput == 1) {
+        printf("\n================= Centroid Coordinates =================\n");
+        for(i = 0; i < NCLUSTERS; i++){
+            printf("%d:", i);
+            for(j = 0; j < NFEATURES; j++){
+                printf(" %.2f", cluster_centres[i][j]);
+            }
+            printf("\n\n");
+        }
+    }
 
 	/* =============== Command Line Output =============== */
 
