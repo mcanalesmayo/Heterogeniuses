@@ -21,6 +21,8 @@
 	}
 #endif
 
+#define XSTR(x) #x
+#define STR(x) XSTR(x)
 
 #ifdef NV 
 	#include <oclUtils.h>
@@ -161,13 +163,14 @@ int allocate(float features[][NFEATURES])
 	cl_device_id device = device_list[0];
 
 	// Create the FPGA program.
-  	std::string binary_file = aocl_utils::getBoardBinaryFile("~/Heterogeniuses/opencl/kmeans/kmeans", device);
+  	std::string binary_file = aocl_utils::getBoardBinaryFile(STR(AOCX_PATH), device);
+  	
   	printf("Using AOCX: %s\n", binary_file.c_str());
   	cl_program prog = aocl_utils::createProgramFromBinary(context, binary_file.c_str(), &device, 1);
   	err = clBuildProgram(prog, 0, NULL, NULL, NULL, NULL);
   	if (err != CL_SUCCESS) { printf("ERROR: FPGA clBuildProgram() => %d\n", err); return -1; }
 	
-	char * kernel_kmeans_c  = "kmeans_kernel_c";
+	char * kernel_kmeans_c  = "kmeans_assign";
 	/*char * kernel_swap  = "kmeans_swap";*/	
 		
 	kernel_s = clCreateKernel(prog, kernel_kmeans_c, &err);  
