@@ -161,7 +161,7 @@ int allocate(float features[][NFEATURES])
 	cl_device_id device = device_list[0];
 
 	// Create the FPGA program.
-  	std::string binary_file = aocl_utils::getBoardBinaryFile("/home/mcanales/Heterogeniuses/opencl/kmeans/kmeans", device);
+  	std::string binary_file = aocl_utils::getBoardBinaryFile("~/Heterogeniuses/opencl/kmeans/kmeans", device);
   	printf("Using AOCX: %s\n", binary_file.c_str());
   	cl_program prog = aocl_utils::createProgramFromBinary(context, binary_file.c_str(), &device, 1);
   	err = clBuildProgram(prog, 0, NULL, NULL, NULL, NULL);
