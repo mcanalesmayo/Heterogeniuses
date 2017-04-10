@@ -167,7 +167,7 @@ int allocate(float features[][NFEATURES])
   	err = clBuildProgram(prog, 0, NULL, NULL, NULL, NULL);
   	if (err != CL_SUCCESS) { printf("ERROR: FPGA clBuildProgram() => %d\n", err); return -1; }
 	
-	char * kernel_kmeans_c  = "kmeans_kernel_c";
+	char * kernel_kmeans_c  = "kmeans_assign";
 	/*char * kernel_swap  = "kmeans_swap";*/	
 		
 	kernel_s = clCreateKernel(prog, kernel_kmeans_c, &err);  
