@@ -4,6 +4,7 @@
 
 #define SIZEOF_FLOAT 4
 
+__attribute__((reqd_work_group_size(NFEATURES*NCLUSTERS,1,1)))
 __kernel void kmeans_assign(__global float* restrict feature,   
               __global float* restrict clusters,
               __global int* restrict membership

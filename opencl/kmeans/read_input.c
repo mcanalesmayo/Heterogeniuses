@@ -105,7 +105,6 @@ int setup(int argc, char **argv) {
 		int		opt;
  extern char   *optarg;
 		char   *filename = 0;
-		float   buf[NPOINTS][NFEATURES];
 		char	line[20480];
 		int		isBinaryFile = 0;
 
@@ -185,8 +184,7 @@ int setup(int argc, char **argv) {
 	printf("Number of features: %d\n", NFEATURES);	
 	/* ============== I/O end ==============*/
 
-	srand(7);												/* seed for future random number generator */	
-	memcpy(features[0], buf, NPOINTS*NFEATURES*sizeof(float)); /* now features holds 2-dimensional array of features */
+	srand(7);												/* seed for future random number generator */
 
 	/* ======================= core of the clustering ===================*/
 
