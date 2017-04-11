@@ -8,3 +8,6 @@ bin/
 *.exe
 /data/kmeans/scale*
 /data/scale*
+/opencl/kmeans/kmeans/*
+/opencl/kmeans/*.aoco
+/opencl/kemasn/*.aocx

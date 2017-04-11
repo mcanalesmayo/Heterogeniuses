@@ -171,6 +171,26 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 		}
 		c++;
     } while ((delta > threshold) && (loop++ < 500));	/* makes sure loop terminates */
+
+
+
+	/* Saving the output */
+		
+	FILE *f = fopen("file.txt", "w");
+	if (f == NULL)
+	{
+	    printf("Error opening file!\n");
+	    exit(1);
+	}
+	
+
+	for(int i = 0; i < NPOINTS; i++) {
+		/* print Membership and features */
+		fprintf(f, "%d %f %f\n", membership[i], feature[i][0], feature[i][1]);
+	} 
+
+	fclose(f);
+
 	printf("iterated %d times\n", c);
     free(new_centers[0]);
     free(new_centers);
