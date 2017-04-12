@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 #include "kmeans.h"
+#include <omp.h>
 
 #ifdef WIN
 	#include <windows.h>
@@ -376,6 +377,10 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 	clFinish(cmd_queue);
 	
 	delta = 0;
+
+
+	omp_set_num_threads(8);
+	#pragma omp parallel for schedule(guided) private(i,j) shared(membership_OCL, membership,new_centers) reduction (+:delta)
 	for (i = 0; i < n_points; i++)
 	{
 	//	printf("%d==%d?\n", n_points, i);
