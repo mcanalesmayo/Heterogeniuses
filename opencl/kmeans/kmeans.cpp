@@ -36,7 +36,7 @@
 #elif defined(RD_WG_SIZE)
         #define BLOCK_SIZE RD_WG_SIZE
 #else
-        #define BLOCK_SIZE 512
+        #define BLOCK_SIZE 128
 #endif
 
 #ifdef RD_WG_SIZE_1_0
@@ -46,10 +46,10 @@
 #elif defined(RD_WG_SIZE)
      #define BLOCK_SIZE2 RD_WG_SIZE
 #else
-     #define BLOCK_SIZE2 512
+     #define BLOCK_SIZE2 128
 #endif
 
-//#define TWO_GPUS
+#define TWO_GPUS
 
 
 // local variables
@@ -121,9 +121,23 @@ cl_mem d_feature_swap;
 cl_mem d_cluster;
 cl_mem d_membership;
 
+#ifdef TWO_GPUS
+cl_mem d_feature2;
+cl_mem d_feature_swap2;
+cl_mem d_cluster2;
+cl_mem d_membership2;
+#endif
+
+
 cl_kernel kernel;
 cl_kernel kernel_s;
 cl_kernel kernel2;
+
+#ifdef TWO_GPUS
+cl_kernel kernel_2;
+cl_kernel kernel_s_2;
+cl_kernel kernel2_2;
+#endif
 
 int   *membership_OCL;
 int   *membership_d;
@@ -171,36 +185,82 @@ int allocate(int n_points, int n_features, int n_clusters, float **feature)
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
 	kernel2 = clCreateKernel(prog, kernel_swap, &err);  
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
+
+#ifdef TWO_GPUS
+	kernel_s_2 = clCreateKernel(prog, kernel_kmeans_c, &err);  
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
+	kernel2_2 = clCreateKernel(prog, kernel_swap, &err);  
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
+#endif
+
 		
 	clReleaseProgram(prog);	
+
+	int divider=1; //TODO: ONLY WORKS IF n_points is a multiple of 2
 	
-	d_feature = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * n_features * sizeof(float), NULL, &err );
+#ifdef TWO_GPUS
+	divider=2;
+#endif
+	
+	d_feature = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * n_features * sizeof(float)/divider, NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature (size:%d) => %d\n", n_points * n_features, err); return -1;}
-	d_feature_swap = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * n_features * sizeof(float), NULL, &err );
+	d_feature_swap = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * n_features * sizeof(float)/divider, NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap (size:%d) => %d\n", n_points * n_features, err); return -1;}
 	d_cluster = clCreateBuffer(context, CL_MEM_READ_WRITE, n_clusters * n_features  * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster (size:%d) => %d\n", n_clusters * n_features, err); return -1;}
-	d_membership = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * sizeof(int), NULL, &err );
+	d_membership = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * sizeof(int)/divider, NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership (size:%d) => %d\n", n_points, err); return -1;}
-		
+
+#ifdef TWO_GPUS		
+	d_feature2 = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * n_features * sizeof(float)/divider, NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature (size:%d) => %d\n", n_points * n_features, err); return -1;}
+	d_feature_swap2 = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * n_features * sizeof(float)/divider, NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap (size:%d) => %d\n", n_points * n_features, err); return -1;}
+	d_cluster2 = clCreateBuffer(context, CL_MEM_READ_WRITE, n_clusters * n_features  * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster (size:%d) => %d\n", n_clusters * n_features, err); return -1;}
+	d_membership2 = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * sizeof(int)/divider, NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership (size:%d) => %d\n", n_points, err); return -1;}
+#endif
+
+	//CHANGED TO NON-BLOCKING
 	//write buffers
-	err = clEnqueueWriteBuffer(cmd_queue, d_feature, 1, 0, n_points * n_features * sizeof(float), feature[0], 0, 0, 0);
+	err = clEnqueueWriteBuffer(cmd_queue, d_feature, 0, 0, n_points * n_features * sizeof(float)/divider, feature[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature (size:%d) => %d\n", n_points * n_features, err); return -1; }
-	
+#ifdef TWO_GPUS
+	err = clEnqueueWriteBuffer(cmd_queue2, d_feature2, 0, 0, n_points * n_features * sizeof(float)/divider, feature[n_points/divider], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature (size:%d) => %d\n", n_points * n_features, err); return -1; }
+#endif
+
+
+	int div_points=n_points/divider;
 	clSetKernelArg(kernel2, 0, sizeof(void *), (void*) &d_feature);
 	clSetKernelArg(kernel2, 1, sizeof(void *), (void*) &d_feature_swap);
-	clSetKernelArg(kernel2, 2, sizeof(cl_int), (void*) &n_points);
+	clSetKernelArg(kernel2, 2, sizeof(cl_int), (void*) &div_points);
 	clSetKernelArg(kernel2, 3, sizeof(cl_int), (void*) &n_features);
-	
-	size_t global_work[3] = { n_points, 1, 1 };
+
+#ifdef TWO_GPUS
+	clSetKernelArg(kernel2_2, 0, sizeof(void *), (void*) &d_feature2);
+	clSetKernelArg(kernel2_2, 1, sizeof(void *), (void*) &d_feature_swap2);
+	clSetKernelArg(kernel2_2, 2, sizeof(cl_int), (void*) &div_points);
+	clSetKernelArg(kernel2_2, 3, sizeof(cl_int), (void*) &n_features);
+#endif
+
+	size_t global_work[3] = { n_points/divider, 1, 1 };
 	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
 	size_t local_work_size= BLOCK_SIZE; // work group size is defined by RD_WG_SIZE_0 or RD_WG_SIZE_0_0 2014/06/10 17:00:51
 	if(global_work[0]%local_work_size !=0)
 	  global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
+	
 
+	printf("%lu, %lu\n", global_work[0], local_work_size);
 	err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, &local_work_size, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
-	
+
+#ifdef TWO_GPUS
+	err = clEnqueueNDRangeKernel(cmd_queue2, kernel2_2, 1, NULL, global_work, &local_work_size, 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }	
+#endif
+
 	membership_OCL = (int*) malloc(n_points * sizeof(int));
 }
 
@@ -210,6 +270,14 @@ void deallocateMemory()
 	clReleaseMemObject(d_feature_swap);
 	clReleaseMemObject(d_cluster);
 	clReleaseMemObject(d_membership);
+
+#ifdef TWO_GPUS
+	clReleaseMemObject(d_feature2);
+	clReleaseMemObject(d_feature_swap2);
+	clReleaseMemObject(d_cluster2);
+	clReleaseMemObject(d_membership2);
+#endif
+
 	free(membership_OCL);
 
 }
@@ -237,7 +305,12 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 	int i, j, k;
 	cl_int err = 0;
 	
-	size_t global_work[3] = { n_points, 1, 1 }; 
+	int divider=1;
+
+#ifdef TWO_GPUS
+	divider=2;
+#endif
+	size_t global_work[3] = { n_points/divider, 1, 1 }; 
 
 
 	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
@@ -245,42 +318,69 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 	if(global_work[0]%local_work_size !=0)
 	  global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
 
-#ifdef TWO_GPUS
-	size_t global_work2[3] = { global_work[0]/2, 1, 1 };
-	global_work[0]=global_work[0]/2;
-#endif
+
+	global_work[0]=global_work[0];
 	
-	err = clEnqueueWriteBuffer(cmd_queue, d_cluster, 1, 0, n_clusters * n_features * sizeof(float), clusters[0], 0, 0, 0);
+
+	//CHANGED TO NON BLOCKING
+	err = clEnqueueWriteBuffer(cmd_queue, d_cluster, 0, 0, n_clusters * n_features * sizeof(float), clusters[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_cluster (size:%d) => %d\n", n_points, err); return -1; }
+#ifdef TWO_GPUS
+	err = clEnqueueWriteBuffer(cmd_queue2, d_cluster2, 0, 0, n_clusters * n_features * sizeof(float), clusters[0], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_cluster (size:%d) => %d\n", n_points, err); return -1; }
+#endif
 
 	int size = 0; int offset = 0;
+
+	int div_points=n_points/divider;
 					
 	clSetKernelArg(kernel_s, 0, sizeof(void *), (void*) &d_feature_swap);
 	clSetKernelArg(kernel_s, 1, sizeof(void *), (void*) &d_cluster);
 	clSetKernelArg(kernel_s, 2, sizeof(void *), (void*) &d_membership);
-	clSetKernelArg(kernel_s, 3, sizeof(cl_int), (void*) &n_points);
+	clSetKernelArg(kernel_s, 3, sizeof(cl_int), (void*) &div_points);
 	clSetKernelArg(kernel_s, 4, sizeof(cl_int), (void*) &n_clusters);
 	clSetKernelArg(kernel_s, 5, sizeof(cl_int), (void*) &n_features);
 	clSetKernelArg(kernel_s, 6, sizeof(cl_int), (void*) &offset);
 	clSetKernelArg(kernel_s, 7, sizeof(cl_int), (void*) &size);
 
-	err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, &local_work_size, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
 #ifdef TWO_GPUS
-	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_s, 1, global_work, global_work2, &local_work_size, 0, 0, 0);
+	clSetKernelArg(kernel_s_2, 0, sizeof(void *), (void*) &d_feature_swap2);
+	clSetKernelArg(kernel_s_2, 1, sizeof(void *), (void*) &d_cluster2);
+	clSetKernelArg(kernel_s_2, 2, sizeof(void *), (void*) &d_membership2);
+	clSetKernelArg(kernel_s_2, 3, sizeof(cl_int), (void*) &div_points);
+	clSetKernelArg(kernel_s_2, 4, sizeof(cl_int), (void*) &n_clusters);
+	clSetKernelArg(kernel_s_2, 5, sizeof(cl_int), (void*) &n_features);
+	clSetKernelArg(kernel_s_2, 6, sizeof(cl_int), (void*) &offset);
+	clSetKernelArg(kernel_s_2, 7, sizeof(cl_int), (void*) &size);
+#endif
+
+
+	//printf("Lanzando %d threads en GPU0\n", global_work[0]);
+	err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, &local_work_size, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+	err = clEnqueueReadBuffer(cmd_queue, d_membership, 0, 0, n_points * sizeof(int)/divider, membership_OCL, 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: Memcopy Out\n"); return -1; }
+	//printf("Leyendo %d bytes en GPU0\n", n_points * sizeof(int)/divider);
+
+#ifdef TWO_GPUS
+	//printf("Lanzando %d threads en GPU1\n", global_work[0]);
+	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_s_2, 1, NULL, global_work, &local_work_size, 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+	err = clEnqueueReadBuffer(cmd_queue2, d_membership2, 0, 0, n_points * sizeof(int)/divider, membership_OCL+(n_points/divider), 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: Memcopy Out-> %d\n", err); return -1; }
+	//printf("Leyendo %d bytes en GPU1\n", n_points * sizeof(int)/divider);
 	clFinish(cmd_queue2);
 #endif
 
 	clFinish(cmd_queue);
-	err = clEnqueueReadBuffer(cmd_queue, d_membership, 1, 0, n_points * sizeof(int), membership_OCL, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: Memcopy Out\n"); return -1; }
 	
 	delta = 0;
 	for (i = 0; i < n_points; i++)
 	{
+	//	printf("%d==%d?\n", n_points, i);
 		int cluster_id = membership_OCL[i];
+	//	printf("%d->%d\n", i, cluster_id);
 		new_centers_len[cluster_id]++;
 		if (membership_OCL[i] != membership[i])
 		{
@@ -292,6 +392,6 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 			new_centers[cluster_id][j] += feature[i][j];
 		}
 	}
-
+	
 	return delta;
 }
