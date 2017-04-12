@@ -10,7 +10,7 @@ __kernel void kmeans_assign(__global float* restrict feature,
               __global int* restrict membership
               )
 {
-    __local float clusters_local[NCLUSTERS*SIZEOF_FLOAT];
+    __local float clusters_local[NFEATURES*NCLUSTERS*SIZEOF_FLOAT];
     __local float features_local[NFEATURES*NCLUSTERS*SIZEOF_FLOAT];
     int index;
     unsigned int gid = get_global_id(0);

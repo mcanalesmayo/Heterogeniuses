@@ -220,4 +220,3 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 
     return clusters;
 }
-
