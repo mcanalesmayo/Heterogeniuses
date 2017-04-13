@@ -379,13 +379,17 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 	delta = 0;
 
 
-	omp_set_num_threads(8);
-	#pragma omp parallel for schedule(guided) private(i,j) shared(membership_OCL, membership,new_centers) reduction (+:delta)
+//	omp_set_num_threads(8);
+//	#pragma omp parallel for schedule(guided) private(i,j) shared(membership_OCL, membership,new_centers) reduction (+:delta) /*reduction(+:new_centers_len[:n_clusters])*/
+// needs array reduction for new_centers and new_centers_len
+// one of the loops that take smost to execute 
+//float reduce_timing = omp_get_wtime() ;
 	for (i = 0; i < n_points; i++)
 	{
 	//	printf("%d==%d?\n", n_points, i);
 		int cluster_id = membership_OCL[i];
 	//	printf("%d->%d\n", i, cluster_id);
+//		#pragma omp atomic
 		new_centers_len[cluster_id]++;
 		if (membership_OCL[i] != membership[i])
 		{
@@ -394,9 +398,11 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 		}
 		for (j = 0; j < n_features; j++)
 		{
+//		#pragma omp atomic
 			new_centers[cluster_id][j] += feature[i][j];
 		}
 	}
-	
+//reduce_timing = omp_get_wtime() - reduce_timing;
+//printf("Time for reduction: %.5fsec\n", reduce_timing);
 	return delta;
 }

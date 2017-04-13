@@ -117,9 +117,9 @@ omp_set_num_threads(8);
 	}
 	initial_points = npoints;
 
-//!TODO: #pragma omp for private(i,j) schedule(guided)
+//! #pragma omp for private(i,j) schedule(guided)
     /* randomly pick cluster centers */
-    for (i=0; i<nclusters && initial_points >= 0; i++) {
+    for (i=0; i<nclusters && initial_points >= 0; i++) { // only simple stop conditions allowed for omp (i.e.,>,<,>=,..)
 		//n = (int)rand() % initial_points;		
 		
         for (j=0; j<nfeatures; j++)
@@ -144,10 +144,11 @@ omp_set_num_threads(8);
 
     new_centers    = (float**) malloc(nclusters *            sizeof(float*));
     new_centers[0] = (float*)  calloc(nclusters * nfeatures, sizeof(float));
-    #pragma omp for private(i) schedule(guided) 
+ #pragma omp for private(i) schedule(guided) 
     for (i=1; i<nclusters; i++)
         new_centers[i] = new_centers[i-1] + nfeatures;
 
+float cluster_timing = omp_get_wtime();
 	/* iterate until convergence */
 	do {
         delta = 0.0;
@@ -161,21 +162,29 @@ omp_set_num_threads(8);
 								   new_centers_len,	/* out: number of points in each cluster */
 								   new_centers		/* sum of points in each cluster */
 								   );
+	//	float reduction_timing = omp_get_wtime() ;
 		/* replace old cluster centers with new_centers */
 		/* CPU side of reduction */
-	#pragma omp parallel for schedule(guided) private(i,j) shared(new_centers_len, clusters, new_centers)
-		for (i=0; i<nclusters; i++) {
+	#pragma omp parallel for schedule(guided) collapse(1)  private(i,j) shared(new_centers_len, clusters, new_centers)
+		for (i=0; i<nclusters; i++) { // very little work, not proper for omp unless using really high nfeatures or ncluster
 			for (j=0; j<nfeatures; j++) {
 				if (new_centers_len[i] > 0)
 					clusters[i][j] = new_centers[i][j] / new_centers_len[i];	/* take average i.e. sum/n */
 				new_centers[i][j] = 0.0;	/* set back to 0 */
 			}
 			new_centers_len[i] = 0;			/* set back to 0 */
-		}	 
+		}
+
+ 	//	reduction_timing = omp_get_wtime() - reduction_timing;
+ 	//	printf("\nTime for reduction in 1 it from do_while Clustering: %.5fsec\n", reduction_timing);
+	 
 		c++;
     } while ((delta > threshold) && (loop++ < 500));	/* makes sure loop terminates */
 	printf("iterated %d times\n", c);
-    free(new_centers[0]);
+	cluster_timing = omp_get_wtime() - cluster_timing;
+printf("\nTime for do_while Clustering: %.5fsec\n", cluster_timing); 
+
+   free(new_centers[0]);
     free(new_centers);
     free(new_centers_len);
 
