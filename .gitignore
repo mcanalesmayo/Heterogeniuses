@@ -12,3 +12,4 @@ bin/
 /opencl/kmeans/*.aoco
 /opencl/kmeans/*.aocx
 /opencl/kmeans/*.txt
+/opencl/kmeans/files/*.txt
