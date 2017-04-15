@@ -91,6 +91,9 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 	int      initial_points;
 	int		 c = 0;
 
+	/* Visualization */
+	char buffer[32]; // The filename buffer.
+
     /* allocate space for and initialize returning variable clusters[] */
     posix_memalign((void **) &clusters, ALIGNMENT, NCLUSTERS * sizeof(float *));
     posix_memalign((void **) &clusters[0], ALIGNMENT, NCLUSTERS * NFEATURES * sizeof(float));
@@ -166,16 +169,35 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 					clusters[i][j] = new_centers[i][j] / new_centers_len[i];	/* take average i.e. sum/n */
 				new_centers[i][j] = 0.0;	/* set back to 0 */
 			}
-            printf("Cluster %d: %d points\n", i, new_centers_len[i]);
+			printf("Cluster %d: %d points\n", i, new_centers_len[i]);
 			new_centers_len[i] = 0;			/* set back to 0 */
 		}
+		
+		// Put "file" then k then ".txt" in to filename.
+		snprintf(buffer, sizeof(char) * 32, "./files/file%i.txt",c);
+
+
+		/* Saving the output */		
+		FILE *f = fopen(buffer, "w");
+		if (f == NULL)
+		{
+			printf("Error opening file!\n");
+			exit(1);
+		}		
+
+		for(int i = 0; i < NPOINTS; i++) {
+			/* Print membership and features */
+			fprintf(f, "%d %f %f\n", membership[i], feature[i][0], feature[i][1]);
+		} 
+
+		fclose(f);
+
 		c++;
     } while ((delta > threshold) && (loop++ < 500));	/* makes sure loop terminates */
 
 
 
-	/* Saving the output */
-		
+	/* Saving the output */		
 	FILE *f = fopen("file.txt", "w");
 	if (f == NULL)
 	{
