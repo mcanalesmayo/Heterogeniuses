@@ -2,16 +2,14 @@
 #define FLT_MAX 3.40282347e+38
 #endif
 
-#define SIZEOF_FLOAT 4
-
 __attribute__((reqd_work_group_size(NFEATURES*NCLUSTERS,1,1)))
 __kernel void kmeans_assign(__global float* restrict feature,   
               __global float* restrict clusters,
               __global int* restrict membership
               )
 {
-    __local float clusters_local[NFEATURES*NCLUSTERS*SIZEOF_FLOAT];
-    __local float features_local[NFEATURES*NCLUSTERS*SIZEOF_FLOAT];
+    __local float clusters_local[NFEATURES*NCLUSTERS];
+    __local float features_local[NFEATURES*NCLUSTERS];
     int index;
     unsigned int gid = get_global_id(0);
     unsigned int lid = get_local_id(0);
