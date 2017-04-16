@@ -270,19 +270,38 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	end = omp_get_wtime();
 	printf("kernel time: %lf\n", end - start);
 	start = end;
-	#pragma omp parallel for schedule(static) private(i,j,cluster_id) shared(membership_OCL,membership,new_centers,new_centers_len) reduction(+:delta)
-	for (i = 0; i < NPOINTS; i++)
-	{
-		cluster_id = membership_OCL[i];
-		new_centers_len[cluster_id]++;
-		if (membership_OCL[i] != membership[i])
-		{
-			delta++;
-			membership[i] = membership_OCL[i];
+	float my_new_centers[NCLUSTERS][NFEATURES];
+	int my_new_centers_len[NCLUSTERS];
+	#pragma omp parrallel for private(i,j)
+	for (i = 0; i < NCLUSTERS; i++){
+		my_new_centers_len[i] = 0;
+		for (j = 0; j < NFEATURES; j++){
+			my_new_centers[i][j] = 0.0;
 		}
-		for (j = 0; j < NFEATURES; j++)
+	}
+	#pragma omp parallel private(i,j,cluster_id) firstprivate(my_new_centers,my_new_centers_len) shared(membership_OCL,membership,new_centers,new_centers_len)
+	{
+		#pragma omp for schedule(guided)
+		for (i = 0; i < NPOINTS; i++)
 		{
-			new_centers[cluster_id][j] += features[i][j];
+			cluster_id = membership_OCL[i];
+			my_new_centers_len[cluster_id]++;
+			if (membership_OCL[i] != membership[i])
+			{
+				delta++;
+				membership[i] = membership_OCL[i];
+			}
+			for (j = 0; j < NFEATURES; j++)
+			{
+				my_new_centers[cluster_id][j] += features[i][j];
+			}
+		}
+		#pragma omp critical
+		{
+			for(i = 0; i < NCLUSTERS; i++){
+				new_centers_len[i] += my_new_centers_len[i];
+				new_centers[i][j] += my_new_centers[i][j];
+			}
 		}
 	}
 	end = omp_get_wtime();
