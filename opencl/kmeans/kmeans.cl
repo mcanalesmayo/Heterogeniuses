@@ -16,7 +16,7 @@ __kernel void kmeans_assign(__global float* restrict feature,
     unsigned int gid = get_global_id(0);
     unsigned int lid = get_local_id(0);
 
-    printf("Lid ->  %d   ---  Gid -> %d \n", gid, lid);
+    printf("Lid ->  %d   ---  Gid -> %d \n", lid, gid);
 
     clusters_local[lid] = clusters[lid];
     barrier(CLK_LOCAL_MEM_FENCE);
