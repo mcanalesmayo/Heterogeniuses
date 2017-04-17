@@ -263,8 +263,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	clFinish(cmd_queue);
 	err = clEnqueueReadBuffer(cmd_queue, d_membership, 1, 0, NPOINTS * sizeof(int), membership_OCL, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: Memcopy Out\n"); return -1; }
-	
-	delta = 0;
+
 	omp_set_num_threads(8);
 	int cluster_id;
 	end = omp_get_wtime();
@@ -272,16 +271,16 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	start = end;
 	float my_new_centers[NCLUSTERS][NFEATURES];
 	int my_new_centers_len[NCLUSTERS];
-	#pragma omp parrallel for private(i,j)
+	#pragma omp parallel for private(i,j)
 	for (i = 0; i < NCLUSTERS; i++){
 		my_new_centers_len[i] = 0;
 		for (j = 0; j < NFEATURES; j++){
 			my_new_centers[i][j] = 0.0;
 		}
 	}
-	#pragma omp parallel private(i,j,cluster_id) firstprivate(my_new_centers,my_new_centers_len) shared(membership_OCL,membership,new_centers,new_centers_len)
+	#pragma omp parallel private(i,j,cluster_id) firstprivate(my_new_centers,my_new_centers_len) shared(membership_OCL,membership,new_centers,new_centers_len,delta)
 	{
-		#pragma omp for schedule(guided)
+		#pragma omp for schedule(guided) reduction(+:delta)
 		for (i = 0; i < NPOINTS; i++)
 		{
 			cluster_id = membership_OCL[i];
@@ -296,12 +295,11 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 				my_new_centers[cluster_id][j] += features[i][j];
 			}
 		}
-		#pragma omp critical
-		{
-			for(i = 0; i < NCLUSTERS; i++){
-				new_centers_len[i] += my_new_centers_len[i];
-				new_centers[i][j] += my_new_centers[i][j];
-			}
+		for(i = 0; i < NCLUSTERS; i++){
+			#pragma omp atomic
+			new_centers_len[i] += my_new_centers_len[i];
+			#pragma omp atomic
+			new_centers[i][j] += my_new_centers[i][j];
 		}
 	}
 	end = omp_get_wtime();
