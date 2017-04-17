@@ -74,13 +74,13 @@ extern double wtime(void);
 
 /*----< kmeans_clustering() >---------------------------------------------*/
 float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATURES] */
-                          float   threshold,
+                          int   threshold,
                           int    *membership) /* out: [NPOINTS] */
 {    
     int      i, j, n = 0;				/* counters */
 	int		 loop=0, temp;
     int     *new_centers_len;	/* [NCLUSTERS]: no. of points in each cluster */
-    float    delta;				/* if the point moved */
+    int    	 delta = RANDOM_MAX;/* if the points moved */
     float  **clusters;			/* out: [NCLUSTERS][NFEATURES] */
     float  **new_centers;		/* [NCLUSTERS][NFEATURES] */
 
@@ -111,8 +111,6 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 
     /* randomly pick cluster centers */
     for (i=0; i<NCLUSTERS && initial_points >= 0; i++) {
-		//n = (int)rand() % initial_points;		
-		
         for (j=0; j<NFEATURES; j++)
             clusters[i][j] = feature[initial[n]][j];	// remapped
 
@@ -137,7 +135,7 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
     // first iter
     new_centers_len[0] = 0;
     for (j=0; j<NFEATURES; j++){
-        new_centers[0][j] = 0;
+        new_centers[0][j] = 0.0;
     }
     // remaining iters
     for (i=1; i<NCLUSTERS; i++){
@@ -145,13 +143,12 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
         new_centers[i] = new_centers[i-1] + NFEATURES;
         #pragma omp for private(i) schedule(guided)
         for(j=0; j<NFEATURES; j++){
-            new_centers[i][j] = 0;
+            new_centers[i][j] = 0.0;
         }
     }
 
 	/* iterate until convergence */
 	do {
-        delta = 0.0;
 		// CUDA
 		delta = (float) kmeansOCL(feature,			/* in: [NPOINTS][NFEATURES] */
 								   membership,		/* which cluster the point belongs to */

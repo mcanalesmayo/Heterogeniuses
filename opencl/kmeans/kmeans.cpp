@@ -240,7 +240,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	int delta = 0;
 	int i, j, k;
 	cl_int err = 0;
-	
+
 	err = clEnqueueWriteBuffer(cmd_queue, d_cluster, 1, 0, NCLUSTERS * NFEATURES * sizeof(float), clusters[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_cluster (size:%d) => %d\n", NPOINTS, err); return -1; }
 
@@ -298,10 +298,14 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 		for(i = 0; i < NCLUSTERS; i++){
 			#pragma omp atomic
 			new_centers_len[i] += my_new_centers_len[i];
-			#pragma omp atomic
-			new_centers[i][j] += my_new_centers[i][j];
+			for(j=0; j<NFEATURES; j++){
+				if (new_centers[i][j] != new_centers[i][j]) printf("[%d][%d] is NaN\n", i, j);
+				#pragma omp atomic
+				new_centers[i][j] += my_new_centers[i][j];	
+			}
 		}
 	}
+
 	end = omp_get_wtime();
 	printf("omp reduction time: %lf\n", end - start);
 

@@ -108,7 +108,7 @@ int setup(int argc, char **argv) {
 		char	line[20480];
 		int		isBinaryFile = 0;
 
-		float	threshold = 0.001;		/* default value */
+		int	    threshold = 0;		/* default value */
 		float	len;
 
 		float   features[NPOINTS][NFEATURES] __attribute__ ((aligned (ALIGNMENT)));
@@ -129,7 +129,7 @@ int setup(int argc, char **argv) {
                       break;
             case 'b': isBinaryFile = 1;
                       break;            
-            case 't': threshold=atof(optarg);
+            case 't': threshold=atoi(optarg);
                       break;
 			case 'r': isRMSE = 1;
                       break;
@@ -167,13 +167,12 @@ int setup(int argc, char **argv) {
             exit(1);
 		}
 
-        i = 0;
-        while (fgets(line, 20480, infile) != NULL) {
+        for(i=0; i<NPOINTS; i++) {
+            fgets(line, 20480, infile);
             if (strtok(line, " \t\n") == NULL) continue;            
             for (j=0; j<NFEATURES; j++) {
                 features[i][j] = atof(strtok(NULL, " ,\t\n"));
             }
-            i++;
         }
         fclose(infile);
     }

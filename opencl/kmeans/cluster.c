@@ -80,7 +80,7 @@ extern double wtime(void);
 
 /*---< cluster() >-----------------------------------------------------------*/
 int cluster(float  features[][NFEATURES],				/* array: [NPOINTS][NFEATURES] */
-            float    threshold,				/* loop terminating factor */
+            int    	threshold,				/* loop terminating factor */
             float ***cluster_centres,		/* out: [best_nclusters][NFEATURES] */
 			float	*min_rmse,				/* out: minimum RMSE */
 			int		 isRMSE,				/* calculate RMSE */

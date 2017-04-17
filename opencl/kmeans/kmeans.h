@@ -50,11 +50,11 @@
 float   euclid_dist_2        (float  *pt1, float* pt2);
 int     find_nearest_point   (float  *pt1, float** pts);
 float	rms_err(float feature[][NFEATURES], float** cluster_centres);
-int     cluster(float features[][NFEATURES], float threshold, float ***cluster_centres, float *min_rmse, int isRMSE, int nloops);
+int     cluster(float features[][NFEATURES], int threshold, float ***cluster_centres, float *min_rmse, int isRMSE, int nloops);
 int setup(int argc, char** argv);
 int allocate(float features[][NFEATURES]);
 void deallocateMemory();
 int	kmeansOCL(float feature[][NFEATURES], int *membership, float **clusters, int *new_centers_len, float  **new_centers);
-float** kmeans_clustering(float feature[][NFEATURES], float threshold, int *membership);
+float** kmeans_clustering(float feature[][NFEATURES], int threshold, int *membership);
 
 #endif
