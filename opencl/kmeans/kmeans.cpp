@@ -271,6 +271,14 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	start = end;
 	float my_new_centers[NCLUSTERS][NFEATURES];
 	int my_new_centers_len[NCLUSTERS];
+
+	// // NaN check
+	// for(i=0; i<NCLUSTERS; i++){
+	// 	for(j=0; j<NFEATURES; j++){
+	// 		if (new_centers[i][j] != new_centers[i][j]) printf("new_centers[%d][%d] = %lf\n", i, j, new_centers[i][j]);
+	// 	}
+	// }
+
 	#pragma omp parallel for private(i,j)
 	for (i = 0; i < NCLUSTERS; i++){
 		my_new_centers_len[i] = 0;
@@ -299,12 +307,18 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 			#pragma omp atomic
 			new_centers_len[i] += my_new_centers_len[i];
 			for(j=0; j<NFEATURES; j++){
-				if (new_centers[i][j] != new_centers[i][j]) printf("[%d][%d] is NaN\n", i, j);
+				//if (new_centers[i][j] != new_centers[i][j]) printf("new_centers[%d][%d] = %lf\n", i, j, new_centers[i][j]);
 				#pragma omp atomic
 				new_centers[i][j] += my_new_centers[i][j];	
 			}
 		}
 	}
+
+	// for(i=0; i<NCLUSTERS; i++){
+	// 	for(j=0; j<NFEATURES; j++){
+	// 		if (new_centers[i][j] != new_centers[i][j]) printf("new_centers[%d][%d] = %lf\n", i, j, new_centers[i][j]);
+	// 	}
+	// }
 
 	end = omp_get_wtime();
 	printf("omp reduction time: %lf\n", end - start);

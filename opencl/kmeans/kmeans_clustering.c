@@ -141,7 +141,6 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
     for (i=1; i<NCLUSTERS; i++){
         new_centers_len[i] = 0;
         new_centers[i] = new_centers[i-1] + NFEATURES;
-        #pragma omp for private(i) schedule(guided)
         for(j=0; j<NFEATURES; j++){
             new_centers[i][j] = 0.0;
         }
@@ -150,12 +149,12 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 	/* iterate until convergence */
 	do {
 		// CUDA
-		delta = (float) kmeansOCL(feature,			/* in: [NPOINTS][NFEATURES] */
-								   membership,		/* which cluster the point belongs to */
-								   clusters,		/* out: [NCLUSTERS][NFEATURES] */
-								   new_centers_len,	/* out: number of points in each cluster */
-								   new_centers		/* sum of points in each cluster */
-								   );
+		delta = kmeansOCL(feature,			/* in: [NPOINTS][NFEATURES] */
+						   membership,		/* which cluster the point belongs to */
+						   clusters,		/* out: [NCLUSTERS][NFEATURES] */
+						   new_centers_len,	/* out: number of points in each cluster */
+						   new_centers		/* sum of points in each cluster */
+						   );
 
 		/* replace old cluster centers with new_centers */
 		/* CPU side of reduction */
@@ -169,6 +168,12 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 			printf("Cluster %d: %d points\n", i, new_centers_len[i]);
 			new_centers_len[i] = 0;			/* set back to 0 */
 		}
+
+		// for(i=0; i<NCLUSTERS; i++){
+		// 	for(j=0; j<NFEATURES; j++){
+		// 		printf("clusters[%d][%d] = %lf\n", i, j, clusters[i][j]);
+		// 	}
+		// }
 		
 		// // Put "file" then k then ".txt" in to filename.
 		// snprintf(buffer, sizeof(char) * 32, "./files/file%i.txt",c);
