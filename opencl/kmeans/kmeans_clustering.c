@@ -91,6 +91,8 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 	int      initial_points;
 	int		 c = 0;
 
+	double cluster_timing;
+
 	/* Visualization */
 	char buffer[32]; // The filename buffer.
 
@@ -110,7 +112,7 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 	initial_points = NPOINTS;
 
     /* randomly pick cluster centers */
-    for (i=0; i<NCLUSTERS && initial_points >= 0; i++) {
+    for (i=0; i<NCLUSTERS && initial_points >= 0; i++) { // only simple stop conditions allowed for omp (i.e.,>,<,>=,..)
         for (j=0; j<NFEATURES; j++)
             clusters[i][j] = feature[initial[n]][j];	// remapped
 
@@ -146,6 +148,7 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
         }
     }
 
+    cluster_timing = omp_get_wtime();
 	/* iterate until convergence */
 	do {
 		// CUDA
@@ -158,8 +161,8 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 
 		/* replace old cluster centers with new_centers */
 		/* CPU side of reduction */
-		#pragma omp parallel for schedule(guided) private(i,j) shared(new_centers_len,clusters,new_centers)
-		for (i=0; i<NCLUSTERS; i++) {
+		//#pragma omp parallel for schedule(guided) collapse(1) private(i,j) shared(new_centers_len,clusters,new_centers)
+		for (i=0; i<NCLUSTERS; i++) { // very little work, not proper for omp unless using really high nfeatures or ncluster
 			for (j=0; j<NFEATURES; j++) {
 				if (new_centers_len[i] > 0)
 					clusters[i][j] = new_centers[i][j] / new_centers_len[i];	/* take average i.e. sum/n */
@@ -196,7 +199,8 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 
 		// c++;
     } while ((delta > threshold) && (loop++ < 500));	/* makes sure loop terminates */
-
+	
+	cluster_timing = omp_get_wtime() - cluster_timing;
 
 
 	// /* Saving the output */		
@@ -216,10 +220,11 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 	// fclose(f);
 
 	printf("iterated %d times\n", c);
+	printf("\nTime for do_while Clustering: %.5fsec\n", cluster_timing);
+
     free(new_centers[0]);
     free(new_centers);
     free(new_centers_len);
 
     return clusters;
 }
-

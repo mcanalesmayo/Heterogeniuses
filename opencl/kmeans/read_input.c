@@ -120,7 +120,7 @@ int setup(int argc, char **argv) {
 		float	rmse;
 		
 		int		isOutput = 0;
-		float	cluster_timing, io_timing;		
+		double	cluster_timing, io_timing;		
 
 		/* obtain command line arguments and change appropriate options */
 		while ( (opt=getopt(argc,argv,"i:t:m:n:l:bro"))!= EOF) {

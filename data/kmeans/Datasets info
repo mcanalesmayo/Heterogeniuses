@@ -1,0 +1,9 @@
+Source: http://www.dbs.ifi.lmu.de/cms/Research/SNN/DataSets
+Note: the last column was excluded to suit the the k-means algorithm for testing
+
+FILES AND DATA DESCRIPTION
+------------------------------------------------------------------------------
+Each file contains 10000 samples (points) with a given number of dimensions: 10D, 20D, 40D, 80D, 160D, 320D, 640D
+File format: each a line contains the space separated values for each dimension of a point. The lines are selarated by '\n'.
+Datatype: float
+Number of clusters recommended for testing the algorithm: the data was generated for 100 different clusters, but any number of clusters bewteen 2 and about 1000 should be ok. 

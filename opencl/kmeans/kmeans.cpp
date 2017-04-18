@@ -4,6 +4,7 @@
 #include <math.h>
 #include <iostream>
 #include <string>
+#include "load_balancer.h"
 #include "kmeans.h"
 #include "CL/opencl.h"
 #include "AOCLUtils/aocl_utils.h"
@@ -35,32 +36,37 @@
 #endif
 
 #ifdef RD_WG_SIZE_0_0
-        #define BLOCK_SIZE RD_WG_SIZE_0_0
+    #define BLOCK_SIZE RD_WG_SIZE_0_0
 #elif defined(RD_WG_SIZE_0)
-        #define BLOCK_SIZE RD_WG_SIZE_0
+    #define BLOCK_SIZE RD_WG_SIZE_0
 #elif defined(RD_WG_SIZE)
-        #define BLOCK_SIZE RD_WG_SIZE
+    #define BLOCK_SIZE RD_WG_SIZE
 #else
-        #define BLOCK_SIZE 512
+	#define BLOCK_SIZE 128
 #endif
 
 #ifdef RD_WG_SIZE_1_0
-     #define BLOCK_SIZE2 RD_WG_SIZE_1_0
+	#define BLOCK_SIZE2 RD_WG_SIZE_1_0
 #elif defined(RD_WG_SIZE_1)
-     #define BLOCK_SIZE2 RD_WG_SIZE_1
+	#define BLOCK_SIZE2 RD_WG_SIZE_1
 #elif defined(RD_WG_SIZE)
-     #define BLOCK_SIZE2 RD_WG_SIZE
+	#define BLOCK_SIZE2 RD_WG_SIZE
 #else
-     #define BLOCK_SIZE2 512
+	#define BLOCK_SIZE2 128
 #endif
 
+#define TWO_GPUS
 
 
 // local variables
 static cl_platform_id  *platform_ids;
-static cl_context	    context;
+static cl_context	    context_fpga;
+static cl_context	    context_gpus;
+static cl_command_queue cmd_queue_fpga;
 static cl_command_queue cmd_queue;
-static cl_device_type   device_type;
+#ifdef TWO_GPUS
+static cl_command_queue cmd_queue2;
+#endif
 static cl_device_id    *device_list;
 static cl_int           num_devices;
 
@@ -76,41 +82,73 @@ static int initialize()
 	platform_ids = (cl_platform_id *) malloc(num_platforms * sizeof(cl_platform_id));
 	if (clGetPlatformIDs(num_platforms, platform_ids, NULL) != CL_SUCCESS) { printf("ERROR: clGetPlatformIDs(num_platforms,platform_ids,NULL) failed\n"); return -1; }
 
-	{
-		char char_buffer[512]; 
-		printf("Querying platform for info:\n");
-		printf("==========================\n");
-		clGetPlatformInfo(platform_ids[0], CL_PLATFORM_NAME, 512, char_buffer, NULL);
-		printf("%-40s = %s\n", "CL_PLATFORM_NAME", char_buffer);
-		clGetPlatformInfo(platform_ids[0], CL_PLATFORM_VENDOR, 512, char_buffer, NULL);
-		printf("%-40s = %s\n", "CL_PLATFORM_VENDOR ", char_buffer);
-		clGetPlatformInfo(platform_ids[0], CL_PLATFORM_VERSION, 512, char_buffer, NULL);
-		printf("%-40s = %s\n\n", "CL_PLATFORM_VERSION ", char_buffer);
-	}
+	/* **** */
+	/* GPUs */
+	/* **** */
 
-	// Intel Altera is idx=0
+	// NVIDIA CUDA is idx=1
+	cl_context_properties ctxprop_gpu[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)platform_ids[1], 0};
+	context_gpus = clCreateContextFromType(ctxprop_gpu, CL_DEVICE_TYPE_GPU, NULL, NULL, NULL);
+	if( !context_gpus ) { printf("ERROR: clCreateContextFromType(%s) failed\n", "FPGA"); return -1; }
+
+	// get the list of GPUs
+	result = clGetContextInfo(context_gpus, CL_CONTEXT_DEVICES, 0, NULL, &size);
+	num_devices = (int) (size / sizeof(cl_device_id));
+
+
+	if( result != CL_SUCCESS || num_devices < 1 ) { printf("ERROR: clGetContextInfo() failed\n"); return -1; }
+	
+	result = clGetContextInfo( context_gpus, CL_CONTEXT_DEVICES, size, device_list, NULL );
+	if( result != CL_SUCCESS ) { printf("ERROR: clGetContextInfo() failed\n"); return -1; }
+
+	// create command queue for the first device
+	cmd_queue = clCreateCommandQueue( context_gpus, device_list[0], 0, NULL );
+	if( !cmd_queue ) { printf("ERROR: clCreateCommandQueue() failed\n"); return -1; }
+#ifdef TWO_GPUS
+	cmd_queue2 = clCreateCommandQueue( context_gpus, device_list[1], 0, NULL );
+	if( !cmd_queue2 ) { printf("ERROR: clCreateCommandQueue() failed\n"); return -1; }
+#endif
+
+	// {
+	// 	char char_buffer[512]; 
+	// 	printf("Querying platform for info:\n");
+	// 	printf("==========================\n");
+	// 	clGetPlatformInfo(platform_ids[0], CL_PLATFORM_NAME, 512, char_buffer, NULL);
+	// 	printf("%-40s = %s\n", "CL_PLATFORM_NAME", char_buffer);
+	// 	clGetPlatformInfo(platform_ids[0], CL_PLATFORM_VENDOR, 512, char_buffer, NULL);
+	// 	printf("%-40s = %s\n", "CL_PLATFORM_VENDOR ", char_buffer);
+	// 	clGetPlatformInfo(platform_ids[0], CL_PLATFORM_VERSION, 512, char_buffer, NULL);
+	// 	printf("%-40s = %s\n\n", "CL_PLATFORM_VERSION ", char_buffer);
+	// }
+
 	// cl_context_properties:
 	// Specifies a list of context property names and their corresponding values. Each property name is immediately followed by the corresponding desired value.
 	// The list is terminated with 0. properties can be NULL in which case the platform that is selected is implementation-defined.
 	// The list of supported properties is described in the table below.
-	cl_context_properties ctxprop[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)platform_ids[0], 0};
-	context = clCreateContextFromType(ctxprop, CL_DEVICE_TYPE_ACCELERATOR, NULL, NULL, NULL);
-	if( !context ) { printf("ERROR: clCreateContextFromType(%s) failed\n", "FPGA"); return -1; }
 
-	// get the list of FPGAs
-	result = clGetContextInfo(context, CL_CONTEXT_DEVICES, 0, NULL, &size);
+	/* **** */
+	/* FPGA */
+	/* **** */
 
+	// Intel Altera is idx=0
+	cl_context_properties ctxprop_fpga[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)platform_ids[0], 0};
+	context_fpga = clCreateContextFromType(ctxprop_fpga, CL_DEVICE_TYPE_ACCELERATOR, NULL, NULL, NULL);
+	if( !context_fpga ) { printf("ERROR: clCreateContextFromType(%s) failed\n", "FPGA"); return -1; }
+
+	// get the list of GPUs
+	result = clGetContextInfo(context_fpga, CL_CONTEXT_DEVICES, 0, NULL, &size);
 	num_devices = (int) (size / sizeof(cl_device_id));
-	
+
 	if( result != CL_SUCCESS || num_devices < 1 ) { printf("ERROR: clGetContextInfo() failed\n"); return -1; }
 	device_list = new cl_device_id[num_devices];
+	
 	if( !device_list ) { printf("ERROR: new cl_device_id[] failed\n"); return -1; }
-	result = clGetContextInfo( context, CL_CONTEXT_DEVICES, size, device_list, NULL );
+	result = clGetContextInfo( context_fpga, CL_CONTEXT_DEVICES, size, device_list, NULL );
 	if( result != CL_SUCCESS ) { printf("ERROR: clGetContextInfo() failed\n"); return -1; }
 
 	// create command queue for the first device
-	cmd_queue = clCreateCommandQueue(context, device_list[0], 0, NULL);
-	if( !cmd_queue ) { printf("ERROR: clCreateCommandQueue() FPGA failed\n"); return -1; }
+	cmd_queue = clCreateCommandQueue( context_fpga, device_list[0], 0, NULL );
+	if( !cmd_queue ) { printf("ERROR: clCreateCommandQueue() failed\n"); return -1; }
 
 	free(platform_ids);
 
@@ -120,27 +158,54 @@ static int initialize()
 static int shutdown()
 {
 	// release resources
+	if( cmd_queue_fpga ) clReleaseCommandQueue( cmd_queue_fpga );
 	if( cmd_queue ) clReleaseCommandQueue( cmd_queue );
-	if( context ) clReleaseContext( context );
+#ifdef TWO_GPUS	
+	if( cmd_queue2 ) clReleaseCommandQueue( cmd_queue2 );
+#endif
+	if( context_gpus ) clReleaseContext( context_gpus );
+	if( context_fpga ) clReleaseContext( context_fpga );
 	if( device_list ) delete device_list;
 
 	// reset all variables
+	cmd_queue_fpga = 0;
 	cmd_queue = 0;
-	context = 0;
+#ifdef TWO_GPUS	
+	cmd_queue2 = 0;
+#endif
+	context_gpus = 0;
+	context_fpga = 0;
 	device_list = 0;
 	num_devices = 0;
-	device_type = 0;
 
 	return 0;
 }
 
+cl_mem d_feature_fpga;
+cl_mem d_cluster_fpga;
+cl_mem d_membership_fpga;
+
 cl_mem d_feature;
-/*cl_mem d_feature_swap;*/
+cl_mem d_feature_swap;
 cl_mem d_cluster;
 cl_mem d_membership;
 
-cl_kernel kernel_s;
-/*cl_kernel kernel2;*/
+#ifdef TWO_GPUS
+cl_mem d_feature2;
+cl_mem d_feature_swap2;
+cl_mem d_cluster2;
+cl_mem d_membership2;
+#endif
+
+cl_kernel kernel_fpga;
+
+cl_kernel kernel_assign_gpu1;
+cl_kernel kernel_swap1;
+
+#ifdef TWO_GPUS
+cl_kernel kernel_assign_gpu2;
+cl_kernel kernel_swap2;
+#endif
 
 int   *membership_OCL;
 int   *membership_d;
@@ -148,17 +213,131 @@ float *feature_d;
 float *clusters_d;
 float *center_d;
 
-int allocate(float features[][NFEATURES])
+int npoints_fpga;
+int npoints_gpu;
+
+#ifdef TWO_GPUS
+	int divider=2;
+#else
+	int divider=1; //TODO: ONLY WORKS IF NPOINTS is a multiple of 2
+#endif
+
+int allocate(float feature[][NFEATURES])
 {
+	/* ************ */
+	/* GPUs program */
+	/* ************ */
+
+	int sourcesize = 1024*1024;
+	char *source = (char *) calloc(sourcesize, sizeof(char)); 
+	if(!source) { printf("ERROR: calloc(%d) failed\n", sourcesize); return -1; }
+
+	// read the kernel core source
+	char *tempchar = "./kmeans_gpu.cl";
+	FILE *fp = fopen(tempchar, "rb"); 
+	if(!fp) { printf("ERROR: unable to open '%s'\n", tempchar); return -1; }
+	fread(source + strlen(source), sourcesize, 1, fp);
+	fclose(fp);
+		
 	// OpenCL initialization
 	if(initialize()) return -1;
 
 	// compile kernel
 	cl_int err = 0;
+	const char * slist[2] = { source, 0 };
+	cl_program prog_gpus = clCreateProgramWithSource(context_gpus, 1, slist, NULL, &err);
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateProgramWithSource() => %d\n", err); return -1; }
+	err = clBuildProgram(prog_gpus, 0, NULL, NULL, NULL, NULL);
+	/*{ //show warnings/errors
+		static char log[65536]; memset(log, 0, sizeof(log));
+		cl_device_id device_id = 0;
+		err = clGetContextInfo(context_gpus, CL_CONTEXT_DEVICES, sizeof(device_id), &device_id, NULL);
+		clGetProgramBuildInfo(prog_gpus, device_id, CL_PROGRAM_BUILD_LOG, sizeof(log)-1, log, NULL);
+		if(err || strstr(log,"warning:") || strstr(log, "error:")) printf("<<<<\n%s\n>>>>\n", log);
+	}*/
+	if(err != CL_SUCCESS) { printf("ERROR: clBuildProgram() => %d\n", err); return -1; }
+	
+	char * kernel_assign_gpu_name  = "kmeans_kernel_assign";
+	char * kernel_swap_name  = "kmeans_swap";	
+		
+	kernel_assign_gpu1 = clCreateKernel(prog_gpus, kernel_assign_gpu_name, &err);  
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
+	kernel_swap1 = clCreateKernel(prog_gpus, kernel_swap_name, &err);  
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
 
-	/* ------------ */
+#ifdef TWO_GPUS
+	kernel_assign_gpu2 = clCreateKernel(prog_gpus, kernel_assign_gpu_name, &err);  
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
+	kernel_swap2 = clCreateKernel(prog_gpus, kernel_swap_name, &err);  
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
+#endif
+
+	free(source);
+	clReleaseProgram(prog_gpus);
+
+	npoints_fpga = bestFpgaWorkload(NPOINTS, NFEATURES, NCLUSTERS);
+	npoints_gpu = (NPOINTS - npoints_fpga)/divider;
+	
+	d_feature = clCreateBuffer(context_gpus, CL_MEM_READ_WRITE, npoints_gpu * NFEATURES * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
+	d_feature_swap = clCreateBuffer(context_gpus, CL_MEM_READ_WRITE, npoints_gpu * NFEATURES * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
+	d_cluster = clCreateBuffer(context_gpus, CL_MEM_READ_WRITE, NCLUSTERS * NFEATURES * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
+	d_membership = clCreateBuffer(context_gpus, CL_MEM_READ_WRITE, npoints_gpu * sizeof(int)/divider, NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership (size:%d) => %d\n", NPOINTS, err); return -1;}
+
+#ifdef TWO_GPUS		
+	d_feature2 = clCreateBuffer(context_gpus, CL_MEM_READ_WRITE, npoints_gpu * NFEATURES * sizeof(float)/divider, NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
+	d_feature_swap2 = clCreateBuffer(context_gpus, CL_MEM_READ_WRITE, npoints_gpu * NFEATURES * sizeof(float)/divider, NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
+	d_cluster2 = clCreateBuffer(context_gpus, CL_MEM_READ_WRITE, NCLUSTERS * NFEATURES  * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
+	d_membership2 = clCreateBuffer(context_gpus, CL_MEM_READ_WRITE, npoints_gpu * sizeof(int)/divider, NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership (size:%d) => %d\n", NPOINTS, err); return -1;}
+#endif
+
+	//CHANGED TO NON-BLOCKING
+	//write buffers
+	err = clEnqueueWriteBuffer(cmd_queue, d_feature, 0, 0, npoints_gpu * NFEATURES * sizeof(float)/divider, feature[0], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1; }
+#ifdef TWO_GPUS
+	err = clEnqueueWriteBuffer(cmd_queue2, d_feature2, 0, 0, npoints_gpu * NFEATURES * sizeof(float)/divider, feature[npoints_gpu * NFEATURES], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1; }
+#endif
+
+
+	int div_points=npoints_gpu;
+	clSetKernelArg(kernel_swap1, 0, sizeof(void *), (void*) &d_feature);
+	clSetKernelArg(kernel_swap1, 1, sizeof(void *), (void*) &d_feature_swap);
+	clSetKernelArg(kernel_swap1, 2, sizeof(cl_int), (void*) &div_points);
+
+#ifdef TWO_GPUS
+	clSetKernelArg(kernel_swap2, 0, sizeof(void *), (void*) &d_feature2);
+	clSetKernelArg(kernel_swap2, 1, sizeof(void *), (void*) &d_feature_swap2);
+	clSetKernelArg(kernel_swap2, 2, sizeof(cl_int), (void*) &div_points);
+#endif
+
+	size_t global_work_gpus[3] = { npoints_gpu, 1, 1 };
+	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
+	size_t local_work_size_gpus = BLOCK_SIZE; // work group size is defined by RD_WG_SIZE_0 or RD_WG_SIZE_0_0 2014/06/10 17:00:51
+	if(global_work_gpus[0]%local_work_size_gpus != 0) global_work_gpus[0] = (global_work_gpus[0]/local_work_size_gpus+1) * local_work_size_gpus;
+
+	printf("%lu, %lu\n", global_work_gpus[0], local_work_size_gpus);
+	err = clEnqueueNDRangeKernel(cmd_queue, kernel_swap1, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+
+#ifdef TWO_GPUS
+	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_swap2, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }	
+#endif
+
+
+
+	/* ************ */
 	/* FPGA program */
-	/* ------------ */
+	/* ************ */
 
 	cl_device_id device = device_list[0];
 
@@ -166,45 +345,40 @@ int allocate(float features[][NFEATURES])
   	std::string binary_file = aocl_utils::getBoardBinaryFile(STR(AOCX_PATH), device);
   	
   	printf("Using AOCX: %s\n", binary_file.c_str());
-  	cl_program prog = aocl_utils::createProgramFromBinary(context, binary_file.c_str(), &device, 1);
-  	err = clBuildProgram(prog, 0, NULL, NULL, NULL, NULL);
+  	cl_program prog_fpga = aocl_utils::createProgramFromBinary(context_fpga, binary_file.c_str(), &device, 1);
+  	err = clBuildProgram(prog_fpga, 0, NULL, NULL, NULL, NULL);
   	if (err != CL_SUCCESS) { printf("ERROR: FPGA clBuildProgram() => %d\n", err); return -1; }
 	
-	char * kernel_kmeans_c  = "kmeans_assign";
+	char *kernel_assign_fpga_name  = "kmeans_assign";
 	/*char * kernel_swap  = "kmeans_swap";*/	
 		
-	kernel_s = clCreateKernel(prog, kernel_kmeans_c, &err);  
+	kernel_fpga = clCreateKernel(prog_fpga, kernel_assign_fpga_name, &err);  
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
-/*	kernel2 = clCreateKernel(prog, kernel_swap, &err);  
+/*	kernel2 = clCreateKernel(prog_fpga, kernel_swap, &err);  
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }*/
 		
-	clReleaseProgram(prog);	
+	clReleaseProgram(prog_fpga);	
 	
-	d_feature = clCreateBuffer(context, CL_MEM_READ_WRITE, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
+	d_feature_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_WRITE, npoints_fpga * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
-	/*d_feature_swap = clCreateBuffer(context, CL_MEM_READ_WRITE, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
+	/*d_feature_swap = clCreateBuffer(context_fpga, CL_MEM_READ_WRITE, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}*/
-	d_cluster = clCreateBuffer(context, CL_MEM_READ_WRITE, NCLUSTERS * NFEATURES  * sizeof(float), NULL, &err );
+	d_cluster_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_WRITE, NCLUSTERS * NFEATURES  * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
-	d_membership = clCreateBuffer(context, CL_MEM_READ_WRITE, NPOINTS * sizeof(int), NULL, &err );
+	d_membership_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_WRITE, npoints_fpga * sizeof(int), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership (size:%d) => %d\n", NPOINTS, err); return -1;}
 		
 	//write buffers
-	err = clEnqueueWriteBuffer(cmd_queue, d_feature, 1, 0, NPOINTS * NFEATURES * sizeof(float), features[0], 0, 0, 0);
+	err = clEnqueueWriteBuffer(cmd_queue_fpga, d_feature_fpga, 1, 0, npoints_fpga * NFEATURES * sizeof(float), feature[(npoints_gpu)*2], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1; }
 	
-	/*clSetKernelArg(kernel2, 0, sizeof(void *), (void*) &d_feature);
-	clSetKernelArg(kernel2, 1, sizeof(void *), (void*) &d_feature_swap);
-	clSetKernelArg(kernel2, 2, sizeof(cl_int), (void*) &NPOINTS);
-	clSetKernelArg(kernel2, 3, sizeof(cl_int), (void*) &NFEATURES);*/
-	
-	size_t global_work[3] = { NPOINTS, 1, 1 };
-	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
+	// size_t global_work_fpga[3] = { npoints_fpga, 1, 1 };
+	// Ke Wang adjustable local group size 2013/08/07 10:37:33
 	/*size_t local_work_size= BLOCK_SIZE; // work group size is defined by RD_WG_SIZE_0 or RD_WG_SIZE_0_0 2014/06/10 17:00:51
 	if(global_work[0]%local_work_size !=0) global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
 
-	err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, &local_work_size, 0, 0, 0);*/
-	/*err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, NULL, 0, 0, 0);
+	err = clEnqueueNDRangeKernel(cmd_queue_fpga, kernel2, 1, NULL, global_work, &local_work_size, 0, 0, 0);*/
+	/*err = clEnqueueNDRangeKernel(cmd_queue_fpga, kernel2, 1, NULL, global_work, NULL, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }*/
 	
 	posix_memalign((void **) &membership_OCL, ALIGNMENT, NPOINTS * sizeof(int));
@@ -213,11 +387,23 @@ int allocate(float features[][NFEATURES])
 void deallocateMemory()
 {
 	clReleaseMemObject(d_feature);
-	//clReleaseMemObject(d_feature_swap);
+	clReleaseMemObject(d_feature_swap);
 	clReleaseMemObject(d_cluster);
 	clReleaseMemObject(d_membership);
-	free(membership_OCL);
 
+#ifdef TWO_GPUS
+	clReleaseMemObject(d_feature2);
+	clReleaseMemObject(d_feature_swap2);
+	clReleaseMemObject(d_cluster2);
+	clReleaseMemObject(d_membership2);
+#endif
+
+	clReleaseMemObject(d_feature_fpga);
+	//clReleaseMemObject(d_feature_swap_fpga);
+	clReleaseMemObject(d_cluster_fpga);
+	clReleaseMemObject(d_membership_fpga);
+
+	free(membership_OCL);
 }
 
 
@@ -241,28 +427,105 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	int i, j, k;
 	cl_int err = 0;
 
-	err = clEnqueueWriteBuffer(cmd_queue, d_cluster, 1, 0, NCLUSTERS * NFEATURES * sizeof(float), clusters[0], 0, 0, 0);
+	/* **** */
+	/* GPUs */
+	/* **** */
+
+	size_t global_work_gpus[3] = { npoints_gpu, 1, 1 }; 
+	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
+	size_t local_work_size_gpus = BLOCK_SIZE2; // work group size is defined by RD_WG_SIZE_1 or RD_WG_SIZE_1_0 2014/06/10 17:00:41
+	if(global_work_gpus[0]%local_work_size_gpus !=0) global_work_gpus[0]=(global_work_gpus[0]/local_work_size_gpus+1)*local_work_size_gpus;
+
+	//CHANGED TO NON BLOCKING
+	err = clEnqueueWriteBuffer(cmd_queue, d_cluster, 0, 0, NCLUSTERS * NFEATURES * sizeof(float), clusters[0], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_cluster (size:%d) => %d\n", npoints_gpu, err); return -1; }
+#ifdef TWO_GPUS
+	err = clEnqueueWriteBuffer(cmd_queue2, d_cluster2, 0, 0, NCLUSTERS * NFEATURES * sizeof(float), clusters[0], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_cluster (size:%d) => %d\n", npoints_gpu, err); return -1; }
+#endif
+	int div_points=npoints_gpu;
+					
+	clSetKernelArg(kernel_assign_gpu1, 0, sizeof(void *), (void*) &d_feature_swap);
+	clSetKernelArg(kernel_assign_gpu1, 1, sizeof(void *), (void*) &d_cluster);
+	clSetKernelArg(kernel_assign_gpu1, 2, sizeof(void *), (void*) &d_membership);
+	clSetKernelArg(kernel_assign_gpu1, 3, sizeof(cl_int), (void*) &div_points);
+
+#ifdef TWO_GPUS
+	clSetKernelArg(kernel_assign_gpu2, 0, sizeof(void *), (void*) &d_feature_swap2);
+	clSetKernelArg(kernel_assign_gpu2, 1, sizeof(void *), (void*) &d_cluster2);
+	clSetKernelArg(kernel_assign_gpu2, 2, sizeof(void *), (void*) &d_membership2);
+	clSetKernelArg(kernel_assign_gpu2, 3, sizeof(cl_int), (void*) &div_points);
+#endif
+
+
+
+	/* **** */
+	/* FPGA */
+	/* **** */
+
+	err = clEnqueueWriteBuffer(cmd_queue, d_cluster_fpga, 1, 0, NCLUSTERS * NFEATURES * sizeof(float), clusters[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_cluster (size:%d) => %d\n", NPOINTS, err); return -1; }
 
-	int size = 0; int offset = 0;
-
 	//clSetKernelArg(kernel_s, 0, sizeof(void *), (void*) &d_feature_swap);
-	clSetKernelArg(kernel_s, 0, sizeof(void *), (void*) &d_feature);
-	clSetKernelArg(kernel_s, 1, sizeof(void *), (void*) &d_cluster);
-	clSetKernelArg(kernel_s, 2, sizeof(void *), (void*) &d_membership);
+	clSetKernelArg(kernel_fpga, 0, sizeof(void *), (void*) &d_feature_fpga);
+	clSetKernelArg(kernel_fpga, 1, sizeof(void *), (void*) &d_cluster_fpga);
+	clSetKernelArg(kernel_fpga, 2, sizeof(void *), (void*) &d_membership_fpga);
 
-	size_t global_work[3] = { NPOINTS, 1, 1 }; 
+	size_t global_work_fpga[3] = { npoints_fpga, 1, 1 }; 
 
 	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
-	size_t local_work_size=NFEATURES*NCLUSTERS; // work group size is defined by RD_WG_SIZE_1 or RD_WG_SIZE_1_0 2014/06/10 17:00:41
-	if(global_work[0]%local_work_size !=0) global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
+	size_t local_work_size_fpga=NFEATURES*NCLUSTERS; // work group size is defined by RD_WG_SIZE_1 or RD_WG_SIZE_1_0 2014/06/10 17:00:41
+	if(global_work_fpga[0]%local_work_size_fpga !=0) global_work_fpga[0]=(global_work_fpga[0]/local_work_size_fpga+1)*local_work_size_fpga;
 
-	err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, &local_work_size, 0, 0, 0);
-	/*err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, NULL, 0, 0, 0);*/
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+
+
+	/* ************ */
+	/* Enqueue jobs */
+	/* ************ */
+
+#ifdef TWO_GPUS
+	clFinish(cmd_queue2);
+#endif
 	clFinish(cmd_queue);
-	err = clEnqueueReadBuffer(cmd_queue, d_membership, 1, 0, NPOINTS * sizeof(int), membership_OCL, 0, 0, 0);
+	clFinish(cmd_queue_fpga);
+
+	//printf("Lanzando %d threads en GPU0\n", global_work_gpus[0]);
+	err = clEnqueueNDRangeKernel(cmd_queue, kernel_assign_gpu1, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+
+	err = clEnqueueNDRangeKernel(cmd_queue_fpga, kernel_fpga, 1, NULL, global_work_fpga, &local_work_size_fpga, 0, 0, 0);
+	/*err = clEnqueueNDRangeKernel(cmd_queue, kernel_fpga, 1, NULL, global_work_fpga, NULL, 0, 0, 0);*/
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+
+#ifdef TWO_GPUS
+	//printf("Lanzando %d threads en GPU1\n", global_work_gpus[0]);
+	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_assign_gpu2, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+
+	clFinish(cmd_queue2);
+
+	err = clEnqueueReadBuffer(cmd_queue2, d_membership2, 0, 0, npoints_gpu * sizeof(int)/divider, &membership_OCL[npoints_gpu], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: Memcopy Out-> %d\n", err); return -1; }
+	//printf("Leyendo %d bytes en GPU1\n", n_points * sizeof(int)/divider);
+#endif
+	err = clEnqueueReadBuffer(cmd_queue_fpga, d_membership_fpga, 1, 0, npoints_fpga * sizeof(int), &membership_OCL[npoints_gpu*2], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: Memcopy Out\n"); return -1; }
+
+	err = clEnqueueReadBuffer(cmd_queue, d_membership, 0, 0, npoints_gpu * sizeof(int)/divider, membership_OCL, 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: Memcopy Out\n"); return -1; }
+	//printf("Leyendo %d bytes en GPU0\n", n_points * sizeof(int)/divider);
+
+#ifdef TWO_GPUS
+	clFinish(cmd_queue2);
+#endif
+	clFinish(cmd_queue);
+	clFinish(cmd_queue_fpga);
+	
+
+
+	/* ********* */
+	/* Reduction */
+	/* ********* */
 
 	omp_set_num_threads(8);
 	int cluster_id;
