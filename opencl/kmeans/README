@@ -1,9 +1,38 @@
-NOTE: The current Kmeans implementation doesn't use texture/constant memories, and is different from the CUDA implementation.
+**.bashrc**:
 
-******Adjustable work group size*****
-RD_WG_SIZE_0 or RD_WG_SIZE_0_0 for kernel_swap
-RD_WG_SIZE_1 or RD_WG_SIZE_1_0 for kernel_kmeans 
+```
+# Altera driver version 14.1
+#export QUARTUS_ROOTDIR="/opt/altera/14.1/quartus"
+#export ALTERAOCLSDKROOT="/opt/altera/14.1/hld"
+#export AOCL_BOARD_PACKAGE_ROOT="${ALTERAOCLSDKROOT}/board/terasic/de5net"
+#export PATH="${PATH}:${QUARTUS_ROOTDIR}/bin:${ALTERAOCLSDKROOT}/linux64/bin:${ALTERAOCLSDKROOT}/bin"
+#export LD_LIBRARY_PATH="${AOCL_BOARD_PACKAGE_ROOT}/linux64/lib:${ALTERAOCLSDKROOT}/host/linux64/lib"
+#export AOCL_BOARD_PACKAGE_ROOT="${ALTERAOCLSDKROOT}/board/terasic/de5net"
+#export QUARTUS_64BIT=1
+#export LM_LICENSE_FILE="/opt/altera/14.1/licenses/1-E7Q42D_License.dat"
+
+# Altera driver version 16.1
+export QUARTUS_ROOTDIR="/opt/intelFPGA/16.1/quartus"
+export ALTERAOCLSDKROOT="/opt/intelFPGA/16.1/hld"
+export AOCL_BOARD_PACKAGE_ROOT="${ALTERAOCLSDKROOT}/board/terasic/de5net"
+export PATH="${PATH}:${QUARTUS_ROOTDIR}/bin:${ALTERAOCLSDKROOT}/linux64/bin:${ALTERAOCLSDKROOT}/bin"
+export LD_LIBRARY_PATH="${AOCL_BOARD_PACKAGE_ROOT}/linux64/lib:${ALTERAOCLSDKROOT}/host/linux64/lib"
+export AOCL_BOARD_PACKAGE_ROOT="${ALTERAOCLSDKROOT}/board/terasic/de5net"
+export QUARTUS_64BIT=1
+export LM_LICENSE_FILE="/opt/altera/14.1/licenses/1-E7Q42D_License.dat"
+```
 
 USAGE:
-make clean
-make KERNEL_DIM="-DRD_WG_SIZE_0=128 -DRD_WG_SIZE_1=512"
+
+```
+./comp_exe NPOINTS NFEATURES NCLUSTERS input_dataset
+```
+
+Hint: input_dataset file must be located under /home/hipeac_shared/datasets folder
+Example:
+
+```
+# For g++ version 4.9
+scl enable devtoolset-3 bash
+./comp_exe 10000 128 4 10000_128f.txt
+```

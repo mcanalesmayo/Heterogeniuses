@@ -73,51 +73,45 @@
 extern double wtime(void);
 
 /*----< kmeans_clustering() >---------------------------------------------*/
-float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
-                          int     nfeatures,
-                          int     npoints,
-                          int     nclusters,
-                          float   threshold,
-                          int    *membership) /* out: [npoints] */
+float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATURES] */
+                          int   threshold,
+                          int    *membership) /* out: [NPOINTS] */
 {    
     int      i, j, n = 0;				/* counters */
 	int		 loop=0, temp;
-    int     *new_centers_len;	/* [nclusters]: no. of points in each cluster */
-    float    delta;				/* if the point moved */
-    float  **clusters;			/* out: [nclusters][nfeatures] */
-    float  **new_centers;		/* [nclusters][nfeatures] */
+    int     *new_centers_len;	/* [NCLUSTERS]: no. of points in each cluster */
+    int    	 delta = RANDOM_MAX;/* if the points moved */
+    float  **clusters;			/* out: [NCLUSTERS][NFEATURES] */
+    float  **new_centers;		/* [NCLUSTERS][NFEATURES] */
 
-	int     *initial;			/* used to hold the index of points not yet selected
+	int     initial[NPOINTS];		/* used to hold the index of points not yet selected
 								   prevents the "birthday problem" of dual selection (?)
 								   considered holding initial cluster indices, but changed due to
 								   possible, though unlikely, infinite loops */
 	int      initial_points;
 	int		 c = 0;
 
-	/* nclusters should never be > npoints
-	   that would guarantee a cluster without points */
-	if (nclusters > npoints)
-		nclusters = npoints;
+	/* Visualization */
+	char buffer[32]; // The filename buffer.
 
     /* allocate space for and initialize returning variable clusters[] */
-    clusters    = (float**) malloc(nclusters *             sizeof(float*));
-    clusters[0] = (float*)  malloc(nclusters * nfeatures * sizeof(float));
-    for (i=1; i<nclusters; i++)
-        clusters[i] = clusters[i-1] + nfeatures;
+    posix_memalign((void **) &clusters, ALIGNMENT, NCLUSTERS * sizeof(float *));
+    posix_memalign((void **) &clusters[0], ALIGNMENT, NCLUSTERS * NFEATURES * sizeof(float));
+
+    for (i=1; i<NCLUSTERS; i++)
+        clusters[i] = clusters[i-1] + NFEATURES;
 
 	/* initialize the random clusters */
-	initial = (int *) malloc (npoints * sizeof(int));
-	for (i = 0; i < npoints; i++)
+	#pragma omp parallel for private(i) schedule(static)
+	for (i = 0; i < NPOINTS; i++)
 	{
 		initial[i] = i;
 	}
-	initial_points = npoints;
+	initial_points = NPOINTS;
 
     /* randomly pick cluster centers */
-    for (i=0; i<nclusters && initial_points >= 0; i++) {
-		//n = (int)rand() % initial_points;		
-		
-        for (j=0; j<nfeatures; j++)
+    for (i=0; i<NCLUSTERS && initial_points >= 0; i++) {
+        for (j=0; j<NFEATURES; j++)
             clusters[i][j] = feature[initial[n]][j];	// remapped
 
 		/* swap the selected index to the end (not really necessary,
@@ -130,43 +124,97 @@ float** kmeans_clustering(float **feature,    /* in: [npoints][nfeatures] */
     }
 
 	/* initialize the membership to -1 for all */
-    for (i=0; i < npoints; i++)
-	  membership[i] = -1;
+	#pragma omp parallel for private(i) schedule(guided)
+    for (i=0; i < NPOINTS; i++) membership[i] = -1;
 
     /* allocate space for and initialize new_centers_len and new_centers */
-    new_centers_len = (int*) calloc(nclusters, sizeof(int));
+    posix_memalign((void **) &new_centers_len, ALIGNMENT, NCLUSTERS * sizeof(int));
+    posix_memalign((void **) &new_centers, ALIGNMENT, NCLUSTERS * sizeof(float *));
+    posix_memalign((void **) &new_centers[0], ALIGNMENT, NCLUSTERS * NFEATURES * sizeof(float));
 
-    new_centers    = (float**) malloc(nclusters *            sizeof(float*));
-    new_centers[0] = (float*)  calloc(nclusters * nfeatures, sizeof(float));
-    for (i=1; i<nclusters; i++)
-        new_centers[i] = new_centers[i-1] + nfeatures;
+    // first iter
+    new_centers_len[0] = 0;
+    for (j=0; j<NFEATURES; j++){
+        new_centers[0][j] = 0.0;
+    }
+    // remaining iters
+    for (i=1; i<NCLUSTERS; i++){
+        new_centers_len[i] = 0;
+        new_centers[i] = new_centers[i-1] + NFEATURES;
+        for(j=0; j<NFEATURES; j++){
+            new_centers[i][j] = 0.0;
+        }
+    }
 
 	/* iterate until convergence */
 	do {
-        delta = 0.0;
 		// CUDA
-		delta = (float) kmeansOCL(feature,			/* in: [npoints][nfeatures] */
-								   nfeatures,		/* number of attributes for each point */
-								   npoints,			/* number of data points */
-								   nclusters,		/* number of clusters */
-								   membership,		/* which cluster the point belongs to */
-								   clusters,		/* out: [nclusters][nfeatures] */
-								   new_centers_len,	/* out: number of points in each cluster */
-								   new_centers		/* sum of points in each cluster */
-								   );
+		delta = kmeansOCL(feature,			/* in: [NPOINTS][NFEATURES] */
+						   membership,		/* which cluster the point belongs to */
+						   clusters,		/* out: [NCLUSTERS][NFEATURES] */
+						   new_centers_len,	/* out: number of points in each cluster */
+						   new_centers		/* sum of points in each cluster */
+						   );
 
 		/* replace old cluster centers with new_centers */
 		/* CPU side of reduction */
-		for (i=0; i<nclusters; i++) {
-			for (j=0; j<nfeatures; j++) {
+		#pragma omp parallel for schedule(guided) private(i,j) shared(new_centers_len,clusters,new_centers)
+		for (i=0; i<NCLUSTERS; i++) {
+			for (j=0; j<NFEATURES; j++) {
 				if (new_centers_len[i] > 0)
 					clusters[i][j] = new_centers[i][j] / new_centers_len[i];	/* take average i.e. sum/n */
 				new_centers[i][j] = 0.0;	/* set back to 0 */
 			}
+			printf("Cluster %d: %d points\n", i, new_centers_len[i]);
 			new_centers_len[i] = 0;			/* set back to 0 */
-		}	 
-		c++;
+		}
+
+		// for(i=0; i<NCLUSTERS; i++){
+		// 	for(j=0; j<NFEATURES; j++){
+		// 		printf("clusters[%d][%d] = %lf\n", i, j, clusters[i][j]);
+		// 	}
+		// }
+		
+		// // Put "file" then k then ".txt" in to filename.
+		// snprintf(buffer, sizeof(char) * 32, "./files/file%i.txt",c);
+
+
+		// /* Saving the output */		
+		// FILE *f = fopen(buffer, "w");
+		// if (f == NULL)
+		// {
+		// 	printf("Error opening file!\n");
+		// 	exit(1);
+		// }		
+
+		// for(int i = 0; i < NPOINTS; i++) {
+		// 	/* Print membership and features */
+		// 	fprintf(f, "%d %f %f\n", membership[i], feature[i][0], feature[i][1]);
+		// } 
+
+		// fclose(f);
+
+		// c++;
     } while ((delta > threshold) && (loop++ < 500));	/* makes sure loop terminates */
+
+
+
+	// /* Saving the output */		
+	// FILE *f = fopen("file.txt", "w");
+	// if (f == NULL)
+	// {
+	//     printf("Error opening file!\n");
+	//     exit(1);
+	// }
+	
+
+	// for(int i = 0; i < NPOINTS; i++) {
+	// 	/* print Membership and features */
+	// 	fprintf(f, "%d %f %f\n", membership[i], feature[i][0], feature[i][1]);
+	// } 
+
+	// fclose(f);
+
 	printf("iterated %d times\n", c);
     free(new_centers[0]);
     free(new_centers);

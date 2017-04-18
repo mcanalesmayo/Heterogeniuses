@@ -5,6 +5,9 @@
 #include <iostream>
 #include <string>
 #include "kmeans.h"
+#include "CL/opencl.h"
+#include "AOCLUtils/aocl_utils.h"
+#include <omp.h>
 
 #ifdef WIN
 	#include <windows.h>
@@ -18,6 +21,8 @@
 	}
 #endif
 
+#define XSTR(x) #x
+#define STR(x) XSTR(x)
 
 #ifdef NV 
 	#include <oclUtils.h>
@@ -52,42 +57,49 @@
 
 
 // local variables
+static cl_platform_id  *platform_ids;
 static cl_context	    context;
 static cl_command_queue cmd_queue;
 static cl_device_type   device_type;
-static cl_device_id   * device_list;
+static cl_device_id    *device_list;
 static cl_int           num_devices;
 
-static int initialize(int use_gpu)
+static int initialize()
 {
 	cl_int result;
 	size_t size;
-
-	// create OpenCL context
-	cl_platform_id *platform_ids;
-	cl_platform_id platform_id;
 	cl_uint num_platforms;
-	cl_platform_info platform_info;
-	char platform_name[30];
+
+	printf("Initializing\n");
 	if (clGetPlatformIDs(0, NULL, &num_platforms) != CL_SUCCESS) { printf("ERROR: clGetPlatformIDs(0,NULL,&num_platforms) failed\n"); return -1; }
 	printf("Number of platforms: %d\n", num_platforms);
 	platform_ids = (cl_platform_id *) malloc(num_platforms * sizeof(cl_platform_id));
 	if (clGetPlatformIDs(num_platforms, platform_ids, NULL) != CL_SUCCESS) { printf("ERROR: clGetPlatformIDs(num_platforms,platform_ids,NULL) failed\n"); return -1; }
-	// NVIDIA CUDA is idx=1
-	platform_id = platform_ids[1];
 
-	for(int i=0; i<num_platforms; i++){
-		clGetPlatformInfo(platform_ids[i], CL_PLATFORM_NAME, 30, platform_name, NULL);
-		printf("Platform %d: %s\n", i, platform_name);
+	{
+		char char_buffer[512]; 
+		printf("Querying platform for info:\n");
+		printf("==========================\n");
+		clGetPlatformInfo(platform_ids[0], CL_PLATFORM_NAME, 512, char_buffer, NULL);
+		printf("%-40s = %s\n", "CL_PLATFORM_NAME", char_buffer);
+		clGetPlatformInfo(platform_ids[0], CL_PLATFORM_VENDOR, 512, char_buffer, NULL);
+		printf("%-40s = %s\n", "CL_PLATFORM_VENDOR ", char_buffer);
+		clGetPlatformInfo(platform_ids[0], CL_PLATFORM_VERSION, 512, char_buffer, NULL);
+		printf("%-40s = %s\n\n", "CL_PLATFORM_VERSION ", char_buffer);
 	}
 
-	cl_context_properties ctxprop[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)platform_id, 0};
-	device_type = use_gpu ? CL_DEVICE_TYPE_GPU : CL_DEVICE_TYPE_CPU;
-	context = clCreateContextFromType( ctxprop, device_type, NULL, NULL, NULL );
-	if( !context ) { printf("ERROR: clCreateContextFromType(%s) failed\n", use_gpu ? "GPU" : "CPU"); return -1; }
+	// Intel Altera is idx=0
+	// cl_context_properties:
+	// Specifies a list of context property names and their corresponding values. Each property name is immediately followed by the corresponding desired value.
+	// The list is terminated with 0. properties can be NULL in which case the platform that is selected is implementation-defined.
+	// The list of supported properties is described in the table below.
+	cl_context_properties ctxprop[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)platform_ids[0], 0};
+	context = clCreateContextFromType(ctxprop, CL_DEVICE_TYPE_ACCELERATOR, NULL, NULL, NULL);
+	if( !context ) { printf("ERROR: clCreateContextFromType(%s) failed\n", "FPGA"); return -1; }
 
-	// get the list of GPUs
-	result = clGetContextInfo( context, CL_CONTEXT_DEVICES, 0, NULL, &size );
+	// get the list of FPGAs
+	result = clGetContextInfo(context, CL_CONTEXT_DEVICES, 0, NULL, &size);
+
 	num_devices = (int) (size / sizeof(cl_device_id));
 	
 	if( result != CL_SUCCESS || num_devices < 1 ) { printf("ERROR: clGetContextInfo() failed\n"); return -1; }
@@ -97,8 +109,8 @@ static int initialize(int use_gpu)
 	if( result != CL_SUCCESS ) { printf("ERROR: clGetContextInfo() failed\n"); return -1; }
 
 	// create command queue for the first device
-	cmd_queue = clCreateCommandQueue( context, device_list[0], 0, NULL );
-	if( !cmd_queue ) { printf("ERROR: clCreateCommandQueue() failed\n"); return -1; }
+	cmd_queue = clCreateCommandQueue(context, device_list[0], 0, NULL);
+	if( !cmd_queue ) { printf("ERROR: clCreateCommandQueue() FPGA failed\n"); return -1; }
 
 	free(platform_ids);
 
@@ -123,13 +135,12 @@ static int shutdown()
 }
 
 cl_mem d_feature;
-cl_mem d_feature_swap;
+/*cl_mem d_feature_swap;*/
 cl_mem d_cluster;
 cl_mem d_membership;
 
-cl_kernel kernel;
 cl_kernel kernel_s;
-cl_kernel kernel2;
+/*cl_kernel kernel2;*/
 
 int   *membership_OCL;
 int   *membership_d;
@@ -137,83 +148,72 @@ float *feature_d;
 float *clusters_d;
 float *center_d;
 
-int allocate(int n_points, int n_features, int n_clusters, float **feature)
+int allocate(float features[][NFEATURES])
 {
-
-	int sourcesize = 1024*1024;
-	char * source = (char *)calloc(sourcesize, sizeof(char)); 
-	if(!source) { printf("ERROR: calloc(%d) failed\n", sourcesize); return -1; }
-
-	// read the kernel core source
-	char * tempchar = "./kmeans.cl";
-	FILE * fp = fopen(tempchar, "rb"); 
-	if(!fp) { printf("ERROR: unable to open '%s'\n", tempchar); return -1; }
-	fread(source + strlen(source), sourcesize, 1, fp);
-	fclose(fp);
-		
 	// OpenCL initialization
-	int use_gpu = 1;
-	if(initialize(use_gpu)) return -1;
+	if(initialize()) return -1;
 
 	// compile kernel
 	cl_int err = 0;
-	const char * slist[2] = { source, 0 };
-	cl_program prog = clCreateProgramWithSource(context, 1, slist, NULL, &err);
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateProgramWithSource() => %d\n", err); return -1; }
-	err = clBuildProgram(prog, 0, NULL, NULL, NULL, NULL);
-	{ /* show warnings/errors
-		static char log[65536]; memset(log, 0, sizeof(log));
-		cl_device_id device_id = 0;
-//		err = clGetContextInfo(context, CL_CONTEXT_DEVICES, sizeof(device_id), &device_id, NULL);
-		clGetProgramBuildInfo(prog, device_id, CL_PROGRAM_BUILD_LOG, sizeof(log)-1, log, NULL);
-		if(err || strstr(log,"warning:") || strstr(log, "error:")) printf("<<<<\n%s\n>>>>\n", log);
-	*/}
-	if(err != CL_SUCCESS) { printf("ERROR: clBuildProgram() => %d\n", err); return -1; }
+
+	/* ------------ */
+	/* FPGA program */
+	/* ------------ */
+
+	cl_device_id device = device_list[0];
+
+	// Create the FPGA program.
+  	std::string binary_file = aocl_utils::getBoardBinaryFile(STR(AOCX_PATH), device);
+  	
+  	printf("Using AOCX: %s\n", binary_file.c_str());
+  	cl_program prog = aocl_utils::createProgramFromBinary(context, binary_file.c_str(), &device, 1);
+  	err = clBuildProgram(prog, 0, NULL, NULL, NULL, NULL);
+  	if (err != CL_SUCCESS) { printf("ERROR: FPGA clBuildProgram() => %d\n", err); return -1; }
 	
-	char * kernel_kmeans_c  = "kmeans_kernel_c";
-	char * kernel_swap  = "kmeans_swap";	
+	char * kernel_kmeans_c  = "kmeans_assign";
+	/*char * kernel_swap  = "kmeans_swap";*/	
 		
 	kernel_s = clCreateKernel(prog, kernel_kmeans_c, &err);  
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
-	kernel2 = clCreateKernel(prog, kernel_swap, &err);  
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
+/*	kernel2 = clCreateKernel(prog, kernel_swap, &err);  
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }*/
 		
 	clReleaseProgram(prog);	
 	
-	d_feature = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * n_features * sizeof(float), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature (size:%d) => %d\n", n_points * n_features, err); return -1;}
-	d_feature_swap = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * n_features * sizeof(float), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap (size:%d) => %d\n", n_points * n_features, err); return -1;}
-	d_cluster = clCreateBuffer(context, CL_MEM_READ_WRITE, n_clusters * n_features  * sizeof(float), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster (size:%d) => %d\n", n_clusters * n_features, err); return -1;}
-	d_membership = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * sizeof(int), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership (size:%d) => %d\n", n_points, err); return -1;}
+	d_feature = clCreateBuffer(context, CL_MEM_READ_WRITE, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
+	/*d_feature_swap = clCreateBuffer(context, CL_MEM_READ_WRITE, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}*/
+	d_cluster = clCreateBuffer(context, CL_MEM_READ_WRITE, NCLUSTERS * NFEATURES  * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
+	d_membership = clCreateBuffer(context, CL_MEM_READ_WRITE, NPOINTS * sizeof(int), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership (size:%d) => %d\n", NPOINTS, err); return -1;}
 		
 	//write buffers
-	err = clEnqueueWriteBuffer(cmd_queue, d_feature, 1, 0, n_points * n_features * sizeof(float), feature[0], 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature (size:%d) => %d\n", n_points * n_features, err); return -1; }
+	err = clEnqueueWriteBuffer(cmd_queue, d_feature, 1, 0, NPOINTS * NFEATURES * sizeof(float), features[0], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1; }
 	
-	clSetKernelArg(kernel2, 0, sizeof(void *), (void*) &d_feature);
+	/*clSetKernelArg(kernel2, 0, sizeof(void *), (void*) &d_feature);
 	clSetKernelArg(kernel2, 1, sizeof(void *), (void*) &d_feature_swap);
-	clSetKernelArg(kernel2, 2, sizeof(cl_int), (void*) &n_points);
-	clSetKernelArg(kernel2, 3, sizeof(cl_int), (void*) &n_features);
+	clSetKernelArg(kernel2, 2, sizeof(cl_int), (void*) &NPOINTS);
+	clSetKernelArg(kernel2, 3, sizeof(cl_int), (void*) &NFEATURES);*/
 	
-	size_t global_work[3] = { n_points, 1, 1 };
+	size_t global_work[3] = { NPOINTS, 1, 1 };
 	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
-	size_t local_work_size= BLOCK_SIZE; // work group size is defined by RD_WG_SIZE_0 or RD_WG_SIZE_0_0 2014/06/10 17:00:51
-	if(global_work[0]%local_work_size !=0)
-	  global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
+	/*size_t local_work_size= BLOCK_SIZE; // work group size is defined by RD_WG_SIZE_0 or RD_WG_SIZE_0_0 2014/06/10 17:00:51
+	if(global_work[0]%local_work_size !=0) global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
 
-	err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, &local_work_size, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+	err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, &local_work_size, 0, 0, 0);*/
+	/*err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, NULL, 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }*/
 	
-	membership_OCL = (int*) malloc(n_points * sizeof(int));
+	posix_memalign((void **) &membership_OCL, ALIGNMENT, NPOINTS * sizeof(int));
 }
 
 void deallocateMemory()
 {
 	clReleaseMemObject(d_feature);
-	clReleaseMemObject(d_feature_swap);
+	//clReleaseMemObject(d_feature_swap);
 	clReleaseMemObject(d_cluster);
 	clReleaseMemObject(d_membership);
 	free(membership_OCL);
@@ -223,68 +223,105 @@ void deallocateMemory()
 
 int main( int argc, char** argv) 
 {
-	printf("WG size of kernel_swap = %d, WG size of kernel_kmeans = %d \n", BLOCK_SIZE, BLOCK_SIZE2);
+	//printf("WG size of kernel_swap = %d, WG size of kernel_kmeans = %d \n", BLOCK_SIZE, BLOCK_SIZE2);
 
 	setup(argc, argv);
 	shutdown();
 }
 
-int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
-           int     n_features,
-           int     n_points,
-           int     n_clusters,
+int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
            int    *membership,
 		   float **clusters,
 		   int     *new_centers_len,
            float  **new_centers)	
 {
-  
+	double start = omp_get_wtime();
+	double end;
 	int delta = 0;
 	int i, j, k;
 	cl_int err = 0;
-	
-	size_t global_work[3] = { n_points, 1, 1 }; 
 
-	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
-	size_t local_work_size=BLOCK_SIZE2; // work group size is defined by RD_WG_SIZE_1 or RD_WG_SIZE_1_0 2014/06/10 17:00:41
-	if(global_work[0]%local_work_size !=0)
-	  global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
-	
-	err = clEnqueueWriteBuffer(cmd_queue, d_cluster, 1, 0, n_clusters * n_features * sizeof(float), clusters[0], 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_cluster (size:%d) => %d\n", n_points, err); return -1; }
+	err = clEnqueueWriteBuffer(cmd_queue, d_cluster, 1, 0, NCLUSTERS * NFEATURES * sizeof(float), clusters[0], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_cluster (size:%d) => %d\n", NPOINTS, err); return -1; }
 
 	int size = 0; int offset = 0;
-					
-	clSetKernelArg(kernel_s, 0, sizeof(void *), (void*) &d_feature_swap);
+
+	//clSetKernelArg(kernel_s, 0, sizeof(void *), (void*) &d_feature_swap);
+	clSetKernelArg(kernel_s, 0, sizeof(void *), (void*) &d_feature);
 	clSetKernelArg(kernel_s, 1, sizeof(void *), (void*) &d_cluster);
 	clSetKernelArg(kernel_s, 2, sizeof(void *), (void*) &d_membership);
-	clSetKernelArg(kernel_s, 3, sizeof(cl_int), (void*) &n_points);
-	clSetKernelArg(kernel_s, 4, sizeof(cl_int), (void*) &n_clusters);
-	clSetKernelArg(kernel_s, 5, sizeof(cl_int), (void*) &n_features);
-	clSetKernelArg(kernel_s, 6, sizeof(cl_int), (void*) &offset);
-	clSetKernelArg(kernel_s, 7, sizeof(cl_int), (void*) &size);
+
+	size_t global_work[3] = { NPOINTS, 1, 1 }; 
+
+	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
+	size_t local_work_size=NFEATURES*NCLUSTERS; // work group size is defined by RD_WG_SIZE_1 or RD_WG_SIZE_1_0 2014/06/10 17:00:41
+	if(global_work[0]%local_work_size !=0) global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
 
 	err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, &local_work_size, 0, 0, 0);
+	/*err = clEnqueueNDRangeKernel(cmd_queue, kernel_s, 1, NULL, global_work, NULL, 0, 0, 0);*/
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 	clFinish(cmd_queue);
-	err = clEnqueueReadBuffer(cmd_queue, d_membership, 1, 0, n_points * sizeof(int), membership_OCL, 0, 0, 0);
+	err = clEnqueueReadBuffer(cmd_queue, d_membership, 1, 0, NPOINTS * sizeof(int), membership_OCL, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: Memcopy Out\n"); return -1; }
-	
-	delta = 0;
-	for (i = 0; i < n_points; i++)
-	{
-		int cluster_id = membership_OCL[i];
-		new_centers_len[cluster_id]++;
-		if (membership_OCL[i] != membership[i])
-		{
-			delta++;
-			membership[i] = membership_OCL[i];
-		}
-		for (j = 0; j < n_features; j++)
-		{
-			new_centers[cluster_id][j] += feature[i][j];
+
+	omp_set_num_threads(8);
+	int cluster_id;
+	end = omp_get_wtime();
+	printf("kernel time: %lf\n", end - start);
+	start = end;
+	float my_new_centers[NCLUSTERS][NFEATURES];
+	int my_new_centers_len[NCLUSTERS];
+
+	// // NaN check
+	// for(i=0; i<NCLUSTERS; i++){
+	// 	for(j=0; j<NFEATURES; j++){
+	// 		if (new_centers[i][j] != new_centers[i][j]) printf("new_centers[%d][%d] = %lf\n", i, j, new_centers[i][j]);
+	// 	}
+	// }
+
+	#pragma omp parallel for private(i,j)
+	for (i = 0; i < NCLUSTERS; i++){
+		my_new_centers_len[i] = 0;
+		for (j = 0; j < NFEATURES; j++){
+			my_new_centers[i][j] = 0.0;
 		}
 	}
+	#pragma omp parallel private(i,j,cluster_id) firstprivate(my_new_centers,my_new_centers_len) shared(membership_OCL,membership,new_centers,new_centers_len,delta)
+	{
+		#pragma omp for schedule(guided) reduction(+:delta)
+		for (i = 0; i < NPOINTS; i++)
+		{
+			cluster_id = membership_OCL[i];
+			my_new_centers_len[cluster_id]++;
+			if (membership_OCL[i] != membership[i])
+			{
+				delta++;
+				membership[i] = membership_OCL[i];
+			}
+			for (j = 0; j < NFEATURES; j++)
+			{
+				my_new_centers[cluster_id][j] += features[i][j];
+			}
+		}
+		for(i = 0; i < NCLUSTERS; i++){
+			#pragma omp atomic
+			new_centers_len[i] += my_new_centers_len[i];
+			for(j=0; j<NFEATURES; j++){
+				//if (new_centers[i][j] != new_centers[i][j]) printf("new_centers[%d][%d] = %lf\n", i, j, new_centers[i][j]);
+				#pragma omp atomic
+				new_centers[i][j] += my_new_centers[i][j];	
+			}
+		}
+	}
+
+	// for(i=0; i<NCLUSTERS; i++){
+	// 	for(j=0; j<NFEATURES; j++){
+	// 		if (new_centers[i][j] != new_centers[i][j]) printf("new_centers[%d][%d] = %lf\n", i, j, new_centers[i][j]);
+	// 	}
+	// }
+
+	end = omp_get_wtime();
+	printf("omp reduction time: %lf\n", end - start);
 
 	return delta;
 }
