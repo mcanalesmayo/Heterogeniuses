@@ -6,3 +6,10 @@ bin/
 *.out
 *.so
 *.exe
+/data/kmeans/scale*
+/data/scale*
+/opencl/kmeans/kmeans/*
+/opencl/kmeans/*.aoco
+/opencl/kmeans/*.aocx
+/opencl/kmeans/*.txt
+/opencl/kmeans/files/*.txt

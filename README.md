@@ -18,10 +18,7 @@ The team is advised by:
 - Rubén Gran Tejero
 - Darío Suárez Gracia
 
-## Rodinia README
-
-Rodinia Benchmark Suite 3.1
-===========================
+## Rodinia Benchmark Suite 3.1
 
 I. Overview
 

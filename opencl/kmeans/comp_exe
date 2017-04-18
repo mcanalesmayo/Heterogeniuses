@@ -1,0 +1,13 @@
+#!/bin/bash
+# Compiles (emulation) and executes k-means clustering on Intel Altera FPGA
+# $1 = NPOINTS
+# $2 = NFEATURES
+# $3 = NCLUSTERS
+# $4 = input_dataset
+make clean
+make kmeans NPOINTS=$1 NFEATURES=$2 NCLUSTERS=$3
+# Intermediate compilation
+aoc -c kmeans.cl -D NPOINTS=$1 -D NFEATURES=$2 -D NCLUSTERS=$3 --report
+# Emulation
+aoc -D NPOINTS=$1 -D NFEATURES=$2 -D NCLUSTERS=$3 -march=emulator kmeans.cl
+./kmeans.o -i /home/hipeac_shared/datasets/$4
