@@ -172,6 +172,7 @@ float cluster_timing = omp_get_wtime();
 					clusters[i][j] = new_centers[i][j] / new_centers_len[i];	/* take average i.e. sum/n */
 				new_centers[i][j] = 0.0;	/* set back to 0 */
 			}
+			printf("Cluster %d: %d points\n", i, new_centers_len[i]);
 			new_centers_len[i] = 0;			/* set back to 0 */
 		}
 
@@ -182,7 +183,7 @@ float cluster_timing = omp_get_wtime();
     } while ((delta > threshold) && (loop++ < 500));	/* makes sure loop terminates */
 	printf("iterated %d times\n", c);
 	cluster_timing = omp_get_wtime() - cluster_timing;
-printf("\nTime for do_while Clustering: %.5fsec\n", cluster_timing); 
+	printf("\nTime for do_while Clustering: %.5fsec\n", cluster_timing); 
 
    free(new_centers[0]);
     free(new_centers);

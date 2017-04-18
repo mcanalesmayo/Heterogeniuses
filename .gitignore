@@ -6,3 +6,9 @@ bin/
 *.out
 *.so
 *.exe
+
+files/file*
+*.txt
+ kmeans
+kmeans.aoc*
+compilations/*

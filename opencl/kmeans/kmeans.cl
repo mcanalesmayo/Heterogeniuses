@@ -3,7 +3,7 @@
 #endif
 
 __kernel void
-kmeans_kernel_c(__global float  *feature,   
+kmeans_kernel_c(__global float  *feature,
 			  __global float  *clusters,
 			  __global int    *membership,
 			    int     npoints,
@@ -11,7 +11,7 @@ kmeans_kernel_c(__global float  *feature,
 				int     nfeatures,
 				int		offset,
 				int		size
-			  ) 
+			  )
 {
 	unsigned int point_id = get_global_id(0);
     int index = 0;
@@ -20,30 +20,30 @@ kmeans_kernel_c(__global float  *feature,
 		{
 			float min_dist=FLT_MAX;
 			for (int i=0; i < nclusters; i++) {
-				
+
 				float dist = 0;
 				float ans  = 0;
-				for (int l=0; l<nfeatures; l++){
-						ans += (feature[l * npoints + point_id]-clusters[i*nfeatures+l])* 
-							   (feature[l * npoints + point_id]-clusters[i*nfeatures+l]);
-				}
+				for (int f=0; f<nfeatures; f++){
+	          dist += (feature[gid * nfeatures + f] - clusters[c * nfeatures + f])*
+	                 (feature[gid * nfeatures + f] - clusters[c * nfeatures + f]);
+	      }
 
 				dist = ans;
 				if (dist < min_dist) {
 					min_dist = dist;
 					index    = i;
-					
+
 				}
 			}
 		  //printf("%d\n", index);
 		  membership[point_id] = index;
-		}	
-	
+		}
+
 	return;
 }
 
 __kernel void
-kmeans_swap(__global float  *feature,   
+kmeans_swap(__global float  *feature,
 			__global float  *feature_swap,
 			int     npoints,
 			int     nfeatures
@@ -58,4 +58,4 @@ kmeans_swap(__global float  *feature,
 		    feature_swap[i * npoints + tid] = feature[tid * nfeatures + i];
     }
     // end of Lingjie Zhang's modification
-} 
+}

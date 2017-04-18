@@ -20,7 +20,7 @@
 #endif
 
 
-#ifdef NV 
+#ifdef NV
 	#include <oclUtils.h>
 #else
 	#include <CL/cl.h>
@@ -78,10 +78,10 @@ static int initialize(int use_gpu)
 
 	// get the list of GPUs
 	result = clGetContextInfo( context, CL_CONTEXT_DEVICES, 0, NULL, &size );
-	num_devices = (int) (size / sizeof(cl_device_id));	
+	num_devices = (int) (size / sizeof(cl_device_id));
 	if( result != CL_SUCCESS || num_devices < 1 ) { printf("ERROR: clGetContextInfo() failed\n"); return -1; }
 	device_list = new cl_device_id[num_devices];
-	
+
 	if( !device_list ) { printf("ERROR: new cl_device_id[] failed\n"); return -1; }
 	result = clGetContextInfo( context, CL_CONTEXT_DEVICES, size, device_list, NULL );
 	if( result != CL_SUCCESS ) { printf("ERROR: clGetContextInfo() failed\n"); return -1; }
@@ -101,7 +101,7 @@ static int shutdown()
 {
 	// release resources
 	if( cmd_queue ) clReleaseCommandQueue( cmd_queue );
-#ifdef TWO_GPUS	
+#ifdef TWO_GPUS
 	if( cmd_queue2 ) clReleaseCommandQueue( cmd_queue2 );
 #endif
 	if( context ) clReleaseContext( context );
@@ -150,16 +150,16 @@ int allocate(int n_points, int n_features, int n_clusters, float **feature)
 {
 
 	int sourcesize = 1024*1024;
-	char * source = (char *)calloc(sourcesize, sizeof(char)); 
+	char * source = (char *)calloc(sourcesize, sizeof(char));
 	if(!source) { printf("ERROR: calloc(%d) failed\n", sourcesize); return -1; }
 
 	// read the kernel core source
 	char * tempchar = "./kmeans.cl";
-	FILE * fp = fopen(tempchar, "rb"); 
+	FILE * fp = fopen(tempchar, "rb");
 	if(!fp) { printf("ERROR: unable to open '%s'\n", tempchar); return -1; }
 	fread(source + strlen(source), sourcesize, 1, fp);
 	fclose(fp);
-		
+
 	// OpenCL initialization
 	int use_gpu = 1;
 	if(initialize(use_gpu)) return -1;
@@ -178,31 +178,31 @@ int allocate(int n_points, int n_features, int n_clusters, float **feature)
 		if(err || strstr(log,"warning:") || strstr(log, "error:")) printf("<<<<\n%s\n>>>>\n", log);
 	*/}
 	if(err != CL_SUCCESS) { printf("ERROR: clBuildProgram() => %d\n", err); return -1; }
-	
+
 	char * kernel_kmeans_c  = "kmeans_kernel_c";
-	char * kernel_swap  = "kmeans_swap";	
-		
-	kernel_s = clCreateKernel(prog, kernel_kmeans_c, &err);  
+	char * kernel_swap  = "kmeans_swap";
+
+	kernel_s = clCreateKernel(prog, kernel_kmeans_c, &err);
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
-	kernel2 = clCreateKernel(prog, kernel_swap, &err);  
+	kernel2 = clCreateKernel(prog, kernel_swap, &err);
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
 
 #ifdef TWO_GPUS
-	kernel_s_2 = clCreateKernel(prog, kernel_kmeans_c, &err);  
+	kernel_s_2 = clCreateKernel(prog, kernel_kmeans_c, &err);
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
-	kernel2_2 = clCreateKernel(prog, kernel_swap, &err);  
+	kernel2_2 = clCreateKernel(prog, kernel_swap, &err);
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
 #endif
 
-		
-	clReleaseProgram(prog);	
+
+	clReleaseProgram(prog);
 
 	int divider=1; //TODO: ONLY WORKS IF n_points is a multiple of 2
-	
+
 #ifdef TWO_GPUS
 	divider=2;
 #endif
-	
+
 	d_feature = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * n_features * sizeof(float)/divider, NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature (size:%d) => %d\n", n_points * n_features, err); return -1;}
 	d_feature_swap = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * n_features * sizeof(float)/divider, NULL, &err );
@@ -212,7 +212,7 @@ int allocate(int n_points, int n_features, int n_clusters, float **feature)
 	d_membership = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * sizeof(int)/divider, NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership (size:%d) => %d\n", n_points, err); return -1;}
 
-#ifdef TWO_GPUS		
+#ifdef TWO_GPUS
 	d_feature2 = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * n_features * sizeof(float)/divider, NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature (size:%d) => %d\n", n_points * n_features, err); return -1;}
 	d_feature_swap2 = clCreateBuffer(context, CL_MEM_READ_WRITE, n_points * n_features * sizeof(float)/divider, NULL, &err );
@@ -251,15 +251,15 @@ int allocate(int n_points, int n_features, int n_clusters, float **feature)
 	size_t local_work_size= BLOCK_SIZE; // work group size is defined by RD_WG_SIZE_0 or RD_WG_SIZE_0_0 2014/06/10 17:00:51
 	if(global_work[0]%local_work_size !=0)
 	  global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
-	
+
 
 	printf("%lu, %lu\n", global_work[0], local_work_size);
-	err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, &local_work_size, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+	//err = clEnqueueNDRangeKernel(cmd_queue, kernel2, 1, NULL, global_work, &local_work_size, 0, 0, 0);
+	//if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
 #ifdef TWO_GPUS
-	err = clEnqueueNDRangeKernel(cmd_queue2, kernel2_2, 1, NULL, global_work, &local_work_size, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }	
+	//err = clEnqueueNDRangeKernel(cmd_queue2, kernel2_2, 1, NULL, global_work, &local_work_size, 0, 0, 0);
+	//if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 #endif
 
 	membership_OCL = (int*) malloc(n_points * sizeof(int));
@@ -284,7 +284,7 @@ void deallocateMemory()
 }
 
 
-int main( int argc, char** argv) 
+int main( int argc, char** argv)
 {
 	printf("WG size of kernel_swap = %d, WG size of kernel_kmeans = %d \n", BLOCK_SIZE, BLOCK_SIZE2);
 
@@ -292,26 +292,26 @@ int main( int argc, char** argv)
 	shutdown();
 }
 
-int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
+int	kmeansOCL(float **feature,    /* in: [n_points][n_features] */
            int     n_features,
            int     n_points,
            int     n_clusters,
            int    *membership,
 		   float **clusters,
 		   int     *new_centers_len,
-           float  **new_centers)	
+           float  **new_centers)
 {
-  
+
 	int delta = 0;
 	int i, j, k;
 	cl_int err = 0;
-	
+	double start = omp_get_wtime(), end;
 	int divider=1;
 
 #ifdef TWO_GPUS
 	divider=2;
 #endif
-	size_t global_work[3] = { n_points/divider, 1, 1 }; 
+	size_t global_work[3] = { n_points/divider, 1, 1 };
 
 
 	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
@@ -321,7 +321,7 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 
 
 	global_work[0]=global_work[0];
-	
+
 
 	//CHANGED TO NON BLOCKING
 	err = clEnqueueWriteBuffer(cmd_queue, d_cluster, 0, 0, n_clusters * n_features * sizeof(float), clusters[0], 0, 0, 0);
@@ -334,8 +334,8 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 	int size = 0; int offset = 0;
 
 	int div_points=n_points/divider;
-					
-	clSetKernelArg(kernel_s, 0, sizeof(void *), (void*) &d_feature_swap);
+
+	clSetKernelArg(kernel_s, 0, sizeof(void *), (void*) &d_feature);
 	clSetKernelArg(kernel_s, 1, sizeof(void *), (void*) &d_cluster);
 	clSetKernelArg(kernel_s, 2, sizeof(void *), (void*) &d_membership);
 	clSetKernelArg(kernel_s, 3, sizeof(cl_int), (void*) &div_points);
@@ -346,7 +346,7 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 
 
 #ifdef TWO_GPUS
-	clSetKernelArg(kernel_s_2, 0, sizeof(void *), (void*) &d_feature_swap2);
+	clSetKernelArg(kernel_s_2, 0, sizeof(void *), (void*) &d_feature2);
 	clSetKernelArg(kernel_s_2, 1, sizeof(void *), (void*) &d_cluster2);
 	clSetKernelArg(kernel_s_2, 2, sizeof(void *), (void*) &d_membership2);
 	clSetKernelArg(kernel_s_2, 3, sizeof(cl_int), (void*) &div_points);
@@ -375,34 +375,51 @@ int	kmeansOCL(float **feature,    /* in: [npoints][nfeatures] */
 #endif
 
 	clFinish(cmd_queue);
-	
-	delta = 0;
 
 
-//	omp_set_num_threads(8);
-//	#pragma omp parallel for schedule(guided) private(i,j) shared(membership_OCL, membership,new_centers) reduction (+:delta) /*reduction(+:new_centers_len[:n_clusters])*/
-// needs array reduction for new_centers and new_centers_len
-// one of the loops that take smost to execute 
-//float reduce_timing = omp_get_wtime() ;
-	for (i = 0; i < n_points; i++)
-	{
-	//	printf("%d==%d?\n", n_points, i);
-		int cluster_id = membership_OCL[i];
-	//	printf("%d->%d\n", i, cluster_id);
-//		#pragma omp atomic
-		new_centers_len[cluster_id]++;
-		if (membership_OCL[i] != membership[i])
-		{
-			delta++;
-			membership[i] = membership_OCL[i];
-		}
-		for (j = 0; j < n_features; j++)
-		{
-//		#pragma omp atomic
-			new_centers[cluster_id][j] += feature[i][j];
+	omp_set_num_threads(8);
+	int cluster_id;
+	end = omp_get_wtime();
+	printf("kernel time: %lf\n", end - start);
+	start = end;
+	float my_new_centers[n_clusters][n_features];
+	int my_new_centers_len[n_clusters];
+	#pragma omp parallel for private(i,j)
+	for (i = 0; i < n_clusters; i++){
+		my_new_centers_len[i] = 0;
+		for (j = 0; j < n_features; j++){
+			my_new_centers[i][j] = 0.0;
 		}
 	}
-//reduce_timing = omp_get_wtime() - reduce_timing;
-//printf("Time for reduction: %.5fsec\n", reduce_timing);
+	#pragma omp parallel private(i,j,cluster_id) firstprivate(my_new_centers,my_new_centers_len) shared(membership_OCL,membership,new_centers,new_centers_len,delta)
+	{
+		#pragma omp for schedule(guided) reduction(+:delta)
+		for (i = 0; i < n_points; i++)
+		{
+			cluster_id = membership_OCL[i];
+			my_new_centers_len[cluster_id]++;
+			if (membership_OCL[i] != membership[i])
+			{
+				delta++;
+				membership[i] = membership_OCL[i];
+			}
+			for (j = 0; j < n_features; j++)
+			{
+				my_new_centers[cluster_id][j] += feature[i][j];
+			}
+		}
+		for(i = 0; i < n_clusters; i++){
+			#pragma omp atomic
+			new_centers_len[i] += my_new_centers_len[i];
+			for(j = 0; j < n_features; j++){
+				if (new_centers[i][j] != new_centers[i][j]) printf("[%d][%d] is NaN\n", i, j);
+				#pragma omp atomic
+				new_centers[i][j] += my_new_centers[i][j];
+			}
+		}
+	}
+	end = omp_get_wtime();
+	printf("omp reduction time: %lf\n", end - start);
+
 	return delta;
 }
