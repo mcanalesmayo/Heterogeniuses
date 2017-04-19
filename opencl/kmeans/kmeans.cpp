@@ -307,7 +307,7 @@ int allocate(float feature[][NFEATURES])
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_gpu0 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
 	d_cluster_gpu0 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NCLUSTERS * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster_gpu0 (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
-	d_membership_gpu0 = clCreateBuffer(context_gpus, CL_MEM_WRITE_ONLY, npoints_gpu * sizeof(int)/divider, NULL, &err );
+	d_membership_gpu0 = clCreateBuffer(context_gpus, CL_MEM_WRITE_ONLY, npoints_gpu * sizeof(int), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership_gpu0 (size:%d) => %d\n", NPOINTS, err); return -1;}
 
 #ifdef TWO_GPUS		
@@ -317,7 +317,7 @@ int allocate(float feature[][NFEATURES])
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_gpu1 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
 	d_cluster_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NCLUSTERS * NFEATURES  * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster_gpu1 (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
-	d_membership_gpu1 = clCreateBuffer(context_gpus, CL_MEM_WRITE_ONLY, npoints_gpu * sizeof(int)/divider, NULL, &err );
+	d_membership_gpu1 = clCreateBuffer(context_gpus, CL_MEM_WRITE_ONLY, npoints_gpu * sizeof(int), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership_gpu1 (size:%d) => %d\n", NPOINTS, err); return -1;}
 #endif
 
@@ -392,7 +392,7 @@ int allocate(float feature[][NFEATURES])
 
 
 	/* Write feature_swap buffers to devices */
-	float feature_swap[NPOINTS][NFEATURES];
+	float feature_swap[NPOINTS][NFEATURES] __attribute__ ((aligned (ALIGNMENT)));
 	clFinish(cmd_queue);
 #ifdef TWO_GPUS
 	clFinish(cmd_queue2);
@@ -410,8 +410,10 @@ int allocate(float feature[][NFEATURES])
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_swap_gpu0 (size:%d) => %d\n", npoints_gpu * NFEATURES, err); return -1; }
 	err = clEnqueueWriteBuffer(cmd_queue_fpga, d_feature_swap_fpga, 0, 0, npoints_fpga * NFEATURES * sizeof(float), feature_swap[npoints_gpu*divider], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_swap_fpga (size:%d) => %d\n", npoints_fpga * NFEATURES, err); return -1; }
-	
+
+#ifdef TWO_GPUS
 	clFinish(cmd_queue2);
+#endif
 	clFinish(cmd_queue);
 	clFinish(cmd_queue_fpga);
 
@@ -536,7 +538,6 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
 	err = clEnqueueNDRangeKernel(cmd_queue_fpga, kernel_fpga, 1, NULL, global_work_fpga, &local_work_size_fpga, 0, 0, 0);
-	/*err = clEnqueueNDRangeKernel(cmd_queue, kernel_fpga, 1, NULL, global_work_fpga, NULL, 0, 0, 0);*/
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
 #ifdef TWO_GPUS
@@ -545,17 +546,21 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
 	clFinish(cmd_queue2);
-
-	err = clEnqueueReadBuffer(cmd_queue2, d_membership_gpu1, 0, 0, npoints_gpu * sizeof(int)/divider, &membership_OCL[npoints_gpu], 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: Memcopy Out-> %d\n", err); return -1; }
-	//printf("Leyendo %d bytes en GPU1\n", n_points * sizeof(int)/divider);
 #endif
-	err = clEnqueueReadBuffer(cmd_queue_fpga, d_membership_fpga, 1, 0, npoints_fpga * sizeof(int), &membership_OCL[npoints_gpu*2], 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: Memcopy Out\n"); return -1; }
+	clFinish(cmd_queue);
+	clFinish(cmd_queue_fpga);
 
-	err = clEnqueueReadBuffer(cmd_queue, d_membership_gpu0, 0, 0, npoints_gpu * sizeof(int)/divider, membership_OCL, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: Memcopy Out\n"); return -1; }
-	//printf("Leyendo %d bytes en GPU0\n", n_points * sizeof(int)/divider);
+#ifdef TWO_GPUS
+	err = clEnqueueReadBuffer(cmd_queue2, d_membership_gpu1, 0, 0, npoints_gpu * sizeof(int), &membership_OCL[npoints_gpu], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: GPU1 Memcopy Out-> %d\n", err); return -1; }
+	//printf("Leyendo %d bytes en GPU1\n", n_points * sizeof(int));
+#endif
+	err = clEnqueueReadBuffer(cmd_queue, d_membership_gpu0, 0, 0, npoints_gpu * sizeof(int), membership_OCL, 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: GPU0 Memcopy Out\n"); return -1; }
+	//printf("Leyendo %d bytes en GPU0\n", n_points * sizeof(int));
+
+	err = clEnqueueReadBuffer(cmd_queue_fpga, d_membership_fpga, 1, 0, npoints_fpga * sizeof(int), &membership_OCL[npoints_gpu*divider], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: FPGA Memcopy Out\n"); return -1; }
 
 #ifdef TWO_GPUS
 	clFinish(cmd_queue2);
@@ -590,7 +595,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 		for (j = 0; j < NFEATURES; j++){
 			my_new_centers[i][j] = 0.0;
 		}
-	}	
+	}
 	#pragma omp parallel private(i,j,cluster_id) firstprivate(my_new_centers,my_new_centers_len) shared(membership_OCL,membership,new_centers,new_centers_len,delta)
 	{
 		#pragma omp for schedule(guided) reduction(+:delta)

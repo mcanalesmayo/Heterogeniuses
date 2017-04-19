@@ -197,7 +197,7 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 
 		// fclose(f);
 
-		// c++;
+		c++;
     } while ((delta > threshold) && (loop++ < 500));	/* makes sure loop terminates */
 	
 	cluster_timing = omp_get_wtime() - cluster_timing;
