@@ -95,7 +95,7 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 
 	/* Visualization */
 	char buffer[32]; // The filename buffer.
-
+	
     /* allocate space for and initialize returning variable clusters[] */
     posix_memalign((void **) &clusters, ALIGNMENT, NCLUSTERS * sizeof(float *));
     posix_memalign((void **) &clusters[0], ALIGNMENT, NCLUSTERS * NFEATURES * sizeof(float));
