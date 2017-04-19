@@ -570,7 +570,6 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 		#pragma omp for schedule(guided) reduction(+:delta)
 		for (i = 0; i < NPOINTS; i++)
 		{
-			printf("%d\n", i);
 			cluster_id = membership_OCL[i];
 			my_new_centers_len[cluster_id]++;
 			if (membership_OCL[i] != membership[i])
