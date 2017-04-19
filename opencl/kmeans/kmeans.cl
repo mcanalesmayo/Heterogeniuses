@@ -17,6 +17,7 @@ __kernel void kmeans_assign(__global float* restrict feature,
     clusters_local[lid] = clusters[lid];
     barrier(CLK_LOCAL_MEM_FENCE);
 
+    #pragma unroll
     for(int f=0; f<NFEATURES; f++){
         features_local[lid * NFEATURES + f] = feature[f * NPOINTS + gid];
     }
@@ -24,6 +25,7 @@ __kernel void kmeans_assign(__global float* restrict feature,
     float min_dist=FLT_MAX;
     for (int c=0; c < NCLUSTERS; c++) {
         float dist = 0.0;
+        #pragma unroll
         for (int f=0; f<NFEATURES; f++){
             dist += (features_local[lid * NFEATURES + f] - clusters_local[c * NFEATURES + f])* 
                    (features_local[lid * NFEATURES + f] - clusters_local[c * NFEATURES + f]);
