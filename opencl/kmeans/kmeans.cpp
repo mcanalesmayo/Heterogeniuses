@@ -200,17 +200,20 @@ static int shutdown()
 //cl_mem d_feature_fpga;
 cl_mem d_feature_swap_fpga;
 cl_mem d_cluster_fpga;
+cl_mem d_distances_fpga;
 cl_mem d_membership_fpga;
 
 cl_mem d_feature_gpu0;
 cl_mem d_feature_swap_gpu0;
 cl_mem d_cluster_gpu0;
+cl_mem d_distances_gpu0;
 cl_mem d_membership_gpu0;
 
 #ifdef TWO_GPUS
 cl_mem d_feature_gpu1;
 cl_mem d_feature_swap_gpu1;
 cl_mem d_cluster_gpu1;
+cl_mem d_distances_gpu1;
 cl_mem d_membership_gpu1;
 #endif
 
@@ -224,7 +227,8 @@ cl_kernel kernel_assign_gpu2;
 // cl_kernel kernel_swap2;
 #endif
 
-int   *membership_OCL;
+int *membership_OCL;
+float **distances_OCL;
 float *feature_d;
 float *clusters_d;
 float *center_d;
@@ -310,8 +314,8 @@ int allocate(float feature[][NFEATURES])
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_gpu0 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
 	d_cluster_gpu0 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NCLUSTERS * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster_gpu0 (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
-	d_membership_gpu0 = clCreateBuffer(context_gpus, CL_MEM_WRITE_ONLY, npoints_gpu * sizeof(int), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership_gpu0 (size:%d) => %d\n", npoints_gpu, err); return -1;}
+	d_distances_gpu0 = clCreateBuffer(context_gpus, CL_MEM_WRITE_ONLY, npoints_gpu * NCLUSTERS * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_distances_gpu0 (size:%d) => %d\n", npoints_gpu * NCLUSTERS, err); return -1;}
 
 #ifdef TWO_GPUS		
 	/*d_feature_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, div_points * NFEATURES * sizeof(float), NULL, &err );
@@ -320,8 +324,8 @@ int allocate(float feature[][NFEATURES])
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_gpu1 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
 	d_cluster_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NCLUSTERS * NFEATURES  * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster_gpu1 (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
-	d_membership_gpu1 = clCreateBuffer(context_gpus, CL_MEM_WRITE_ONLY, npoints_gpu * sizeof(int), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership_gpu1 (size:%d) => %d\n", npoints_gpu, err); return -1;}
+	d_distances_gpu1 = clCreateBuffer(context_gpus, CL_MEM_WRITE_ONLY, npoints_gpu * NCLUSTERS * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_distances_gpu1 (size:%d) => %d\n", npoints_gpu * NCLUSTERS, err); return -1;}
 #endif
 
 	//CHANGED TO NON-BLOCKING
@@ -381,7 +385,7 @@ int allocate(float feature[][NFEATURES])
 		
 	kernel_fpga = clCreateKernel(prog_fpga, kernel_assign_fpga_name, &err);  
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
-/*	kernel2 = clCreateKernel(prog_fpga, kernel_swap, &err);  
+	/*kernel2 = clCreateKernel(prog_fpga, kernel_swap, &err);  
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }*/
 		
 	clReleaseProgram(prog_fpga);	
@@ -392,8 +396,8 @@ int allocate(float feature[][NFEATURES])
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_fpga (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
 	d_cluster_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_ONLY, NCLUSTERS * NFEATURES  * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster_fpga (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
-	d_membership_fpga = clCreateBuffer(context_fpga, CL_MEM_WRITE_ONLY, npoints_fpga * sizeof(int), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership_fpga (size:%d) => %d\n", NPOINTS, err); return -1;}
+	d_distances_fpga = clCreateBuffer(context_fpga, CL_MEM_WRITE_ONLY, npoints_fpga * NCLUSTERS * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_distances_fpga (size:%d) => %d\n", npoints_fpga * NCLUSTERS, err); return -1;}
 
 
 	/* Write feature_swap buffers to devices */
@@ -420,17 +424,13 @@ int allocate(float feature[][NFEATURES])
 #endif
 	clFinish(cmd_queue);
 	clFinish(cmd_queue_fpga);
-
-	// size_t global_work_fpga[3] = { npoints_fpga, 1, 1 };
-	// Ke Wang adjustable local group size 2013/08/07 10:37:33
-	/*size_t local_work_size= BLOCK_SIZE; // work group size is defined by RD_WG_SIZE_0 or RD_WG_SIZE_0_0 2014/06/10 17:00:51
-	if(global_work[0]%local_work_size !=0) global_work[0]=(global_work[0]/local_work_size+1)*local_work_size;
-
-	err = clEnqueueNDRangeKernel(cmd_queue_fpga, kernel2, 1, NULL, global_work, &local_work_size, 0, 0, 0);*/
-	/*err = clEnqueueNDRangeKernel(cmd_queue_fpga, kernel2, 1, NULL, global_work, NULL, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }*/
 	
-	posix_memalign((void **) &membership_OCL, ALIGNMENT, NPOINTS * sizeof(int));
+	// point to clusters distances
+	posix_memalign((void **) &distances_OCL, ALIGNMENT, NPOINTS * sizeof(float *));
+	posix_memalign((void **) &distances_OCL[0], ALIGNMENT, NPOINTS * NCLUSTERS * sizeof(float));
+	for (int i=1; i<NPOINTS; i++) distances_OCL[i] = distances_OCL[i-1] + NCLUSTERS;
+
+	membership_OCL = (int *) malloc(NPOINTS * sizeof(int));
 }
 
 void deallocateMemory()
@@ -438,20 +438,21 @@ void deallocateMemory()
 	clReleaseMemObject(d_feature_gpu0);
 	clReleaseMemObject(d_feature_swap_gpu0);
 	clReleaseMemObject(d_cluster_gpu0);
-	clReleaseMemObject(d_membership_gpu0);
+	clReleaseMemObject(d_distances_gpu0);
 
 #ifdef TWO_GPUS
 	clReleaseMemObject(d_feature_gpu1);
 	clReleaseMemObject(d_feature_swap_gpu1);
 	clReleaseMemObject(d_cluster_gpu1);
-	clReleaseMemObject(d_membership_gpu1);
+	clReleaseMemObject(d_distances_gpu1);
 #endif
 
 	//clReleaseMemObject(d_feature_fpga);
 	clReleaseMemObject(d_feature_swap_fpga);
 	clReleaseMemObject(d_cluster_fpga);
-	clReleaseMemObject(d_membership_fpga);
+	clReleaseMemObject(d_distances_fpga);
 
+	free(distances_OCL);
 	free(membership_OCL);
 }
 
@@ -496,13 +497,13 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 					
 	clSetKernelArg(kernel_assign_gpu1, 0, sizeof(void *), (void*) &d_feature_swap_gpu0);
 	clSetKernelArg(kernel_assign_gpu1, 1, sizeof(void *), (void*) &d_cluster_gpu0);
-	clSetKernelArg(kernel_assign_gpu1, 2, sizeof(void *), (void*) &d_membership_gpu0);
+	clSetKernelArg(kernel_assign_gpu1, 2, sizeof(void *), (void*) &d_distances_gpu0);
 	clSetKernelArg(kernel_assign_gpu1, 3, sizeof(cl_int), (void*) &div_points);
 
 #ifdef TWO_GPUS
 	clSetKernelArg(kernel_assign_gpu2, 0, sizeof(void *), (void*) &d_feature_swap_gpu1);
 	clSetKernelArg(kernel_assign_gpu2, 1, sizeof(void *), (void*) &d_cluster_gpu1);
-	clSetKernelArg(kernel_assign_gpu2, 2, sizeof(void *), (void*) &d_membership_gpu1);
+	clSetKernelArg(kernel_assign_gpu2, 2, sizeof(void *), (void*) &d_distances_gpu1);
 	clSetKernelArg(kernel_assign_gpu2, 3, sizeof(cl_int), (void*) &div_points);
 #endif
 
@@ -517,7 +518,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 
 	clSetKernelArg(kernel_fpga, 0, sizeof(void *), (void*) &d_feature_swap_fpga);
 	clSetKernelArg(kernel_fpga, 1, sizeof(void *), (void*) &d_cluster_fpga);
-	clSetKernelArg(kernel_fpga, 2, sizeof(void *), (void*) &d_membership_fpga);
+	clSetKernelArg(kernel_fpga, 2, sizeof(void *), (void*) &d_distances_fpga);
 
 	size_t global_work_fpga[3] = { npoints_fpga, 1, 1 }; 
 
@@ -555,15 +556,13 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	clFinish(cmd_queue_fpga);
 
 #ifdef TWO_GPUS
-	err = clEnqueueReadBuffer(cmd_queue2, d_membership_gpu1, 0, 0, npoints_gpu * sizeof(int), &membership_OCL[npoints_gpu], 0, 0, 0);
+	err = clEnqueueReadBuffer(cmd_queue2, d_distances_gpu1, 0, 0, npoints_gpu * NCLUSTERS * sizeof(float), &distances_OCL[npoints_gpu], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU1 Memcopy Out-> %d\n", err); return -1; }
-	//printf("Leyendo %d bytes en GPU1\n", n_points * sizeof(int));
 #endif
-	err = clEnqueueReadBuffer(cmd_queue, d_membership_gpu0, 0, 0, npoints_gpu * sizeof(int), &membership_OCL[0], 0, 0, 0);
+	err = clEnqueueReadBuffer(cmd_queue, d_distances_gpu0, 0, 0, npoints_gpu * NCLUSTERS * sizeof(float), &distances_OCL[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU0 Memcopy Out\n"); return -1; }
-	//printf("Leyendo %d bytes en GPU0\n", n_points * sizeof(int));
 
-	err = clEnqueueReadBuffer(cmd_queue_fpga, d_membership_fpga, 1, 0, npoints_fpga * sizeof(int), &membership_OCL[npoints_gpu*divider], 0, 0, 0);
+	err = clEnqueueReadBuffer(cmd_queue_fpga, d_distances_fpga, 0, 0, npoints_fpga * NCLUSTERS * sizeof(float), &distances_OCL[npoints_gpu*divider], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: FPGA Memcopy Out\n"); return -1; }
 
 #ifdef TWO_GPUS
@@ -579,12 +578,13 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	/* ********* */
 
 	omp_set_num_threads(8);
-	int cluster_id;
 	end = omp_get_wtime();
 	printf("kernel time: %lf\n", end - start);
 	start = end;
 	float my_new_centers[NCLUSTERS][NFEATURES];
 	int my_new_centers_len[NCLUSTERS];
+	float my_closest_distance;
+	int cluster_id;
 
 	// // NaN check
 	// for(i=0; i<NCLUSTERS; i++){
@@ -600,18 +600,30 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 			my_new_centers[i][j] = 0.0;
 		}
 	}
-	#pragma omp parallel private(i,j,cluster_id) firstprivate(my_new_centers,my_new_centers_len) shared(membership_OCL,membership,new_centers,new_centers_len,delta)
+	#pragma omp parallel private(i,j,cluster_id,my_closest_distance) firstprivate(my_new_centers,my_new_centers_len) shared(distances_OCL,membership,new_centers,new_centers_len,delta)
 	{
 		#pragma omp for schedule(guided) reduction(+:delta)
-		for (i = 0; i < NPOINTS; i++)
+		for (i=0; i<NPOINTS; i++)
 		{
-			cluster_id = membership_OCL[i];
-			my_new_centers_len[cluster_id]++;
-			if (membership_OCL[i] != membership[i])
-			{
-				delta++;
-				membership[i] = membership_OCL[i];
+			// get closest cluster
+			my_closest_distance = FLT_MAX;
+			cluster_id = 0;
+			for(j=0; j<NCLUSTERS; j++){
+				if (distances_OCL[i][j] < my_closest_distance){
+					my_closest_distance = distances_OCL[i][j];
+					cluster_id = j;
+				}
 			}
+
+			// check membership
+			my_new_centers_len[cluster_id]++;
+			if (cluster_id != membership[i])
+			{
+				// update delta if changed
+				delta++;
+				membership[i] = cluster_id;
+			}
+
 			for (j = 0; j < NFEATURES; j++)
 			{
 				my_new_centers[cluster_id][j] += features[i][j];
