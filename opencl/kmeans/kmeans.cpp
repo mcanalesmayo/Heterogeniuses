@@ -316,8 +316,8 @@ int allocate(float feature[][NFEATURES])
 #ifdef TWO_GPUS		
 	/*d_feature_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, div_points * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_gpu1 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}*/
-	d_feature_swap_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, npoints_gpu * NFEATURES * sizeof(float), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_gpu1 (size:%d) => %d\n", npoints_gpu * NFEATURES, err); return -1;}
+	d_feature_swap_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_gpu1 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
 	d_cluster_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NCLUSTERS * NFEATURES  * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster_gpu1 (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
 	d_membership_gpu1 = clCreateBuffer(context_gpus, CL_MEM_WRITE_ONLY, npoints_gpu * sizeof(int), NULL, &err );
@@ -388,8 +388,8 @@ int allocate(float feature[][NFEATURES])
 	
 	/*d_feature_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_ONLY, npoints_fpga * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_fpga (size:%d) => %d\n", npoints_fpga * NFEATURES, err); return -1;}*/
-	d_feature_swap_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_ONLY, npoints_fpga * NFEATURES * sizeof(float), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_fpga (size:%d) => %d\n", npoints_fpga * NFEATURES, err); return -1;}
+	d_feature_swap_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_ONLY, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_fpga (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
 	d_cluster_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_ONLY, NCLUSTERS * NFEATURES  * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster_fpga (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
 	d_membership_fpga = clCreateBuffer(context_fpga, CL_MEM_WRITE_ONLY, npoints_fpga * sizeof(int), NULL, &err );
@@ -413,7 +413,7 @@ int allocate(float feature[][NFEATURES])
 	err = clEnqueueWriteBuffer(cmd_queue, d_feature_swap_gpu0, 0, 0, NPOINTS * NFEATURES * sizeof(float), feature_swap[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_swap_gpu0 (size:%d) => %d\n", npoints_gpu * NFEATURES, err); return -1; }
 	err = clEnqueueWriteBuffer(cmd_queue_fpga, d_feature_swap_fpga, 0, 0, NPOINTS * NFEATURES * sizeof(float), feature_swap[0], 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_swap_fpga (size:%d) => %d\n", npoints_fpga * NFEATURES, err); return -1; }
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_swap_fpga (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1; }
 
 #ifdef TWO_GPUS
 	clFinish(cmd_queue2);
