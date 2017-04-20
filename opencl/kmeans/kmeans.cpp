@@ -227,7 +227,6 @@ cl_kernel kernel_assign_gpu2;
 // cl_kernel kernel_swap2;
 #endif
 
-int *membership_OCL;
 float **distances_OCL;
 float *feature_d;
 float *clusters_d;
@@ -429,8 +428,6 @@ int allocate(float feature[][NFEATURES])
 	posix_memalign((void **) &distances_OCL, ALIGNMENT, NPOINTS * sizeof(float *));
 	posix_memalign((void **) &distances_OCL[0], ALIGNMENT, NPOINTS * NCLUSTERS * sizeof(float));
 	for (int i=1; i<NPOINTS; i++) distances_OCL[i] = distances_OCL[i-1] + NCLUSTERS;
-
-	membership_OCL = (int *) malloc(NPOINTS * sizeof(int));
 }
 
 void deallocateMemory()
@@ -453,7 +450,6 @@ void deallocateMemory()
 	clReleaseMemObject(d_distances_fpga);
 
 	free(distances_OCL);
-	free(membership_OCL);
 }
 
 
