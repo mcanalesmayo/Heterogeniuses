@@ -86,7 +86,7 @@ extern double wtime(void);
 
 /*---< usage() >------------------------------------------------------------*/
 void usage(char *argv0) {
-    char *help =
+    char const *help =
         "\nUsage: %s [switches] -i filename\n\n"
 		"    -i filename      :file containing data to be clustered\n"		
 		"    -m max_nclusters :maximum number of clusters allowed    [default=5]\n"
@@ -100,18 +100,20 @@ void usage(char *argv0) {
     exit(-1);
 }
 
+// large variables in the heap rather than the stack
+static float features[NPOINTS][NFEATURES] __attribute__ ((aligned (ALIGNMENT)));
+static char line[20480];
+
 /*---< main() >-------------------------------------------------------------*/
 int setup(int argc, char **argv) {
 		int		opt;
  extern char   *optarg;
 		char   *filename = 0;
-		char	line[20480];
 		int		isBinaryFile = 0;
 
 		int	    threshold = 0;		/* default value */
 		float	len;
 
-		float   features[NPOINTS][NFEATURES] __attribute__ ((aligned (ALIGNMENT)));
 		float **cluster_centres=NULL;
 		int		i, j, index;
 		int		nloops = 1;				/* default value */
@@ -195,7 +197,7 @@ int setup(int argc, char **argv) {
 				   &rmse,					/* Root Mean Squared Error */
 					isRMSE,					/* calculate RMSE */
 					nloops);				/* number of iteration for each number of clusters */		
-    
+
 	cluster_timing = omp_get_wtime() - cluster_timing;
 
     /* =============== Command Line Output =============== */

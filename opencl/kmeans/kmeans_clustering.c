@@ -72,6 +72,11 @@
 
 extern double wtime(void);
 
+static int initial[NPOINTS];	/* used to hold the index of points not yet selected
+								   prevents the "birthday problem" of dual selection (?)
+								   considered holding initial cluster indices, but changed due to
+								   possible, though unlikely, infinite loops */
+
 /*----< kmeans_clustering() >---------------------------------------------*/
 float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATURES] */
                           int   threshold,
@@ -84,10 +89,6 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
     float  **clusters;			/* out: [NCLUSTERS][NFEATURES] */
     float  **new_centers;		/* [NCLUSTERS][NFEATURES] */
 
-	int     initial[NPOINTS];		/* used to hold the index of points not yet selected
-								   prevents the "birthday problem" of dual selection (?)
-								   considered holding initial cluster indices, but changed due to
-								   possible, though unlikely, infinite loops */
 	int      initial_points;
 	int		 c = 0;
 

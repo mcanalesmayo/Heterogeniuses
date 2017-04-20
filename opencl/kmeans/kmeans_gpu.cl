@@ -14,18 +14,18 @@ kmeans_kernel_assign(__global float* restrict feature,
 	if (gid < npoints)
 	{
 		float min_dist=FLT_MAX;
-		for (int i=0; i < NCLUSTERS; i++) {
+		for (int c=0; c < NCLUSTERS; c++) {
 			float dist = 0;
 			float ans  = 0;
-			for (int l=0; l<NFEATURES; l++){
-					ans += (feature[l * npoints + gid]-clusters[i * NFEATURES + l])*
-							(feature[l * npoints + gid]-clusters[i * NFEATURES + l]);
+			for (int f=0; f<NFEATURES; f++){
+					ans += (feature[f * NPOINTS + gid]-clusters[c * NFEATURES + f])*
+							(feature[f * NPOINTS + gid]-clusters[c * NFEATURES + f]);
 			}
 
 			dist = ans;
 			if (dist < min_dist) {
 				min_dist = dist;
-				index = i;
+				index = c;
 			}
 		}
 		membership[gid] = index;
@@ -42,6 +42,6 @@ kmeans_swap(__global float* restrict feature,
 {
 	unsigned int gid = get_global_id(0);
 	if (gid < npoints){
-		for(int i = 0; i < NFEATURES; i++) feature_swap[i * npoints + gid] = feature[gid * NFEATURES + i];
+		for(int f = 0; f < NFEATURES; f++) feature_swap[f * NPOINTS + gid] = feature[gid * NFEATURES + f];
 	}
 }

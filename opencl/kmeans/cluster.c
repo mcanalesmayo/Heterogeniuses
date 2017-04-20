@@ -78,6 +78,9 @@ float	min_rmse_ref = FLT_MAX;
 extern double wtime(void);
 	/* reference min_rmse value */
 
+// large variables in the heap rather than the stack
+static int membership[NPOINTS];				/* which cluster a data point belongs to */
+
 /*---< cluster() >-----------------------------------------------------------*/
 int cluster(float  features[][NFEATURES],				/* array: [NPOINTS][NFEATURES] */
             int    	threshold,				/* loop terminating factor */
@@ -89,7 +92,6 @@ int cluster(float  features[][NFEATURES],				/* array: [NPOINTS][NFEATURES] */
 {
 	int		index =0;						/* number of iteration to reach the best RMSE */
 	int		rmse;							/* RMSE for each clustering */
-    int     membership[NPOINTS];			/* which cluster a data point belongs to */
     float **tmp_cluster_centres;			/* hold coordinates of cluster centers */
 	int		i;
 

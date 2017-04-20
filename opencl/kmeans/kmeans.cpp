@@ -72,6 +72,8 @@ static cl_device_id    *device_list_fpga;
 static cl_int           num_devices_gpu;
 static cl_int           num_devices_fpga;
 
+static float feature_swap[NPOINTS][NFEATURES] __attribute__ ((aligned (ALIGNMENT)));
+
 static int initialize()
 {
 	cl_int result;
@@ -219,7 +221,7 @@ cl_kernel kernel_swap1;
 
 #ifdef TWO_GPUS
 cl_kernel kernel_assign_gpu2;
-cl_kernel kernel_swap2;
+// cl_kernel kernel_swap2;
 #endif
 
 int   *membership_OCL;
@@ -247,7 +249,7 @@ int allocate(float feature[][NFEATURES])
 	if(!source) { printf("ERROR: calloc(%d) failed\n", sourcesize); return -1; }
 
 	// read the kernel core source
-	char *tempchar = "./kmeans_gpu.cl";
+	char const *tempchar = "./kmeans_gpu.cl";
 	FILE *fp = fopen(tempchar, "rb"); 
 	if(!fp) { printf("ERROR: unable to open '%s'\n", tempchar); return -1; }
 	fread(source + strlen(source), sourcesize, 1, fp);
@@ -262,7 +264,7 @@ int allocate(float feature[][NFEATURES])
 	cl_program prog_gpus = clCreateProgramWithSource(context_gpus, 1, slist, NULL, &err);
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateProgramWithSource() => %d\n", err); return -1; }
 	char options[64];
-	sprintf(options, "-D NFEATURES=%d -D NCLUSTERS=%d", NFEATURES, NCLUSTERS);
+	sprintf(options, "-D NPOINTS=%d -D NFEATURES=%d -D NCLUSTERS=%d", NPOINTS, NFEATURES, NCLUSTERS);
 	err = clBuildProgram(prog_gpus, 0, NULL, options, NULL, NULL);
 
 	/*{ //show warnings/errors
@@ -274,8 +276,8 @@ int allocate(float feature[][NFEATURES])
 	}*/
 	if(err != CL_SUCCESS) { printf("ERROR: GPU clBuildProgram() => %d\n", err); return -1; }
 	
-	char * kernel_assign_gpu_name  = "kmeans_kernel_assign";
-	char * kernel_swap_name  = "kmeans_swap";	
+	char const *kernel_assign_gpu_name  = "kmeans_kernel_assign";
+	char const *kernel_swap_name  = "kmeans_swap";	
 		
 	kernel_assign_gpu1 = clCreateKernel(prog_gpus, kernel_assign_gpu_name, &err);  
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
@@ -285,8 +287,8 @@ int allocate(float feature[][NFEATURES])
 #ifdef TWO_GPUS
 	kernel_assign_gpu2 = clCreateKernel(prog_gpus, kernel_assign_gpu_name, &err);  
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
-	kernel_swap2 = clCreateKernel(prog_gpus, kernel_swap_name, &err);  
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
+/*	kernel_swap2 = clCreateKernel(prog_gpus, kernel_swap_name, &err);  
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }*/
 #endif
 
 	free(source);
@@ -301,45 +303,48 @@ int allocate(float feature[][NFEATURES])
 	npoints_fpga = bestFpgaWorkload(NPOINTS, NFEATURES, NCLUSTERS);
 	npoints_gpu = (NPOINTS - npoints_fpga)/divider;
 	
-	d_feature_gpu0 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, div_points * NFEATURES * sizeof(float), NULL, &err );
+	/* Whole swap on a single GPU */
+	d_feature_gpu0 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_gpu0 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
-	d_feature_swap_gpu0 = clCreateBuffer(context_gpus, CL_MEM_READ_WRITE, div_points * NFEATURES * sizeof(float), NULL, &err );
+	d_feature_swap_gpu0 = clCreateBuffer(context_gpus, CL_MEM_READ_WRITE, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_gpu0 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
 	d_cluster_gpu0 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NCLUSTERS * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster_gpu0 (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
 	d_membership_gpu0 = clCreateBuffer(context_gpus, CL_MEM_WRITE_ONLY, npoints_gpu * sizeof(int), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership_gpu0 (size:%d) => %d\n", NPOINTS, err); return -1;}
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership_gpu0 (size:%d) => %d\n", npoints_gpu, err); return -1;}
 
 #ifdef TWO_GPUS		
-	d_feature_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, div_points * NFEATURES * sizeof(float), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_gpu1 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
-	d_feature_swap_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_WRITE, div_points * NFEATURES * sizeof(float), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_gpu1 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
+	/*d_feature_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, div_points * NFEATURES * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_gpu1 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}*/
+	d_feature_swap_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, npoints_gpu * NFEATURES * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_gpu1 (size:%d) => %d\n", npoints_gpu * NFEATURES, err); return -1;}
 	d_cluster_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NCLUSTERS * NFEATURES  * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster_gpu1 (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
 	d_membership_gpu1 = clCreateBuffer(context_gpus, CL_MEM_WRITE_ONLY, npoints_gpu * sizeof(int), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership_gpu1 (size:%d) => %d\n", NPOINTS, err); return -1;}
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_membership_gpu1 (size:%d) => %d\n", npoints_gpu, err); return -1;}
 #endif
 
 	//CHANGED TO NON-BLOCKING
 	//write buffers
-	err = clEnqueueWriteBuffer(cmd_queue, d_feature_gpu0, 0, 0, div_points * NFEATURES * sizeof(float), feature[0], 0, 0, 0);
+	err = clEnqueueWriteBuffer(cmd_queue, d_feature_gpu0, 0, 0, NPOINTS * NFEATURES * sizeof(float), feature[0], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_gpu0 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1; }
+/*	err = clEnqueueWriteBuffer(cmd_queue, d_feature_gpu0, 0, 0, div_points * NFEATURES * sizeof(float), feature[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_gpu0 (size:%d) => %d\n", div_points * NFEATURES, err); return -1; }
 #ifdef TWO_GPUS
 	err = clEnqueueWriteBuffer(cmd_queue2, d_feature_gpu1, 0, 0, div_points * NFEATURES * sizeof(float), feature[div_points], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_gpu1 (size:%d) => %d\n", div_points * NFEATURES, err); return -1; }
-#endif
+#endif*/
 
 	// Let GPUs manage the feature swap, adding another kernel to the FPGA device would incur in overheading
 	clSetKernelArg(kernel_swap1, 0, sizeof(void *), (void*) &d_feature_gpu0);
 	clSetKernelArg(kernel_swap1, 1, sizeof(void *), (void*) &d_feature_swap_gpu0);
 	clSetKernelArg(kernel_swap1, 2, sizeof(cl_int), (void*) &div_points);
 
-#ifdef TWO_GPUS
+/*#ifdef TWO_GPUS
 	clSetKernelArg(kernel_swap2, 0, sizeof(void *), (void*) &d_feature_gpu1);
 	clSetKernelArg(kernel_swap2, 1, sizeof(void *), (void*) &d_feature_swap_gpu1);
 	clSetKernelArg(kernel_swap2, 2, sizeof(cl_int), (void*) &div_points);
-#endif
+#endif*/
 
 	size_t global_work_gpus[3] = { div_points, 1, 1 };
 	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
@@ -350,10 +355,10 @@ int allocate(float feature[][NFEATURES])
 	err = clEnqueueNDRangeKernel(cmd_queue, kernel_swap1, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
-#ifdef TWO_GPUS
+/*#ifdef TWO_GPUS
 	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_swap2, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }	
-#endif
+#endif*/
 
 
 
@@ -371,8 +376,8 @@ int allocate(float feature[][NFEATURES])
   	err = clBuildProgram(prog_fpga, 0, NULL, NULL, NULL, NULL);
   	if (err != CL_SUCCESS) { printf("ERROR: FPGA clBuildProgram() => %d\n", err); return -1; }
 	
-	char *kernel_assign_fpga_name  = "kmeans_assign";
-	/*char * kernel_swap  = "kmeans_swap";*/	
+	char const *kernel_assign_fpga_name  = "kmeans_assign";
+	/*char const *kernel_swap  = "kmeans_swap";*/	
 		
 	kernel_fpga = clCreateKernel(prog_fpga, kernel_assign_fpga_name, &err);  
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
@@ -382,7 +387,7 @@ int allocate(float feature[][NFEATURES])
 	clReleaseProgram(prog_fpga);	
 	
 	/*d_feature_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_ONLY, npoints_fpga * NFEATURES * sizeof(float), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_gpu0 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}*/
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_fpga (size:%d) => %d\n", npoints_fpga * NFEATURES, err); return -1;}*/
 	d_feature_swap_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_ONLY, npoints_fpga * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_fpga (size:%d) => %d\n", npoints_fpga * NFEATURES, err); return -1;}
 	d_cluster_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_ONLY, NCLUSTERS * NFEATURES  * sizeof(float), NULL, &err );
@@ -392,23 +397,22 @@ int allocate(float feature[][NFEATURES])
 
 
 	/* Write feature_swap buffers to devices */
-	float feature_swap[NPOINTS][NFEATURES] __attribute__ ((aligned (ALIGNMENT)));
 	clFinish(cmd_queue);
-#ifdef TWO_GPUS
+/*#ifdef TWO_GPUS
 	clFinish(cmd_queue2);
 	err = clEnqueueReadBuffer(cmd_queue2, d_feature_swap_gpu1, 0, 0, div_points * NFEATURES * sizeof(float), feature_swap[div_points], 0, 0, 0);
-#endif
-	err = clEnqueueReadBuffer(cmd_queue, d_feature_swap_gpu0, 0, 0, div_points * NFEATURES * sizeof(float), feature_swap[0], 0, 0, 0);
+#endif*/
+	err = clEnqueueReadBuffer(cmd_queue, d_feature_swap_gpu0, 0, 0, NPOINTS * NFEATURES * sizeof(float), feature_swap[0], 0, 0, 0);
 
 	clFinish(cmd_queue);
 #ifdef TWO_GPUS
-	clFinish(cmd_queue2);
-	err = clEnqueueWriteBuffer(cmd_queue2, d_feature_swap_gpu1, 0, 0, npoints_gpu * NFEATURES * sizeof(float), feature_swap[npoints_gpu], 0, 0, 0);
+	//clFinish(cmd_queue2);
+	err = clEnqueueWriteBuffer(cmd_queue2, d_feature_swap_gpu1, 0, 0, NPOINTS * NFEATURES * sizeof(float), feature_swap[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_swap_gpu1 (size:%d) => %d\n", npoints_gpu * NFEATURES, err); return -1; }
 #endif
-	err = clEnqueueWriteBuffer(cmd_queue, d_feature_swap_gpu0, 0, 0, npoints_gpu * NFEATURES * sizeof(float), feature_swap[0], 0, 0, 0);
+	err = clEnqueueWriteBuffer(cmd_queue, d_feature_swap_gpu0, 0, 0, NPOINTS * NFEATURES * sizeof(float), feature_swap[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_swap_gpu0 (size:%d) => %d\n", npoints_gpu * NFEATURES, err); return -1; }
-	err = clEnqueueWriteBuffer(cmd_queue_fpga, d_feature_swap_fpga, 0, 0, npoints_fpga * NFEATURES * sizeof(float), feature_swap[npoints_gpu*divider], 0, 0, 0);
+	err = clEnqueueWriteBuffer(cmd_queue_fpga, d_feature_swap_fpga, 0, 0, NPOINTS * NFEATURES * sizeof(float), feature_swap[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_swap_fpga (size:%d) => %d\n", npoints_fpga * NFEATURES, err); return -1; }
 
 #ifdef TWO_GPUS
@@ -555,7 +559,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	if(err != CL_SUCCESS) { printf("ERROR: GPU1 Memcopy Out-> %d\n", err); return -1; }
 	//printf("Leyendo %d bytes en GPU1\n", n_points * sizeof(int));
 #endif
-	err = clEnqueueReadBuffer(cmd_queue, d_membership_gpu0, 0, 0, npoints_gpu * sizeof(int), membership_OCL, 0, 0, 0);
+	err = clEnqueueReadBuffer(cmd_queue, d_membership_gpu0, 0, 0, npoints_gpu * sizeof(int), &membership_OCL[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU0 Memcopy Out\n"); return -1; }
 	//printf("Leyendo %d bytes en GPU0\n", n_points * sizeof(int));
 
