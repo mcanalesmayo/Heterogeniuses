@@ -297,15 +297,11 @@ int allocate(float feature[][NFEATURES])
 	free(source);
 	clReleaseProgram(prog_gpus);
 
-#ifdef TWO_GPUS
-	int div_points=NPOINTS/2;
-#else
 	int div_points=NPOINTS;
-#endif
-
 	npoints_fpga = bestFpgaWorkload(NPOINTS, NFEATURES, NCLUSTERS);
 	npoints_gpu = (NPOINTS - npoints_fpga)/divider;
 	
+	printf("Points for FPGA: %d, Points for each GPU: %d\n", npoints_fpga, npoints_gpu);
 	/* Whole swap on a single GPU */
 	d_feature_gpu0 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_gpu0 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
@@ -338,7 +334,7 @@ int allocate(float feature[][NFEATURES])
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_gpu1 (size:%d) => %d\n", div_points * NFEATURES, err); return -1; }
 #endif*/
 
-	// Let GPUs manage the feature swap, adding another kernel to the FPGA device would incur in overheading
+	// Let a GPU manage the feature swap, adding another kernel to the FPGA device would incur in overheading
 	clSetKernelArg(kernel_swap1, 0, sizeof(void *), (void*) &d_feature_gpu0);
 	clSetKernelArg(kernel_swap1, 1, sizeof(void *), (void*) &d_feature_swap_gpu0);
 	clSetKernelArg(kernel_swap1, 2, sizeof(cl_int), (void*) &div_points);
@@ -350,16 +346,15 @@ int allocate(float feature[][NFEATURES])
 #endif*/
 
 	size_t global_work_gpus[3] = { div_points, 1, 1 };
-	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
-	size_t local_work_size_gpus = BLOCK_SIZE; // work group size is defined by RD_WG_SIZE_0 or RD_WG_SIZE_0_0 2014/06/10 17:00:51
+	size_t local_work_size_gpus = BLOCK_SIZE;
 	if(global_work_gpus[0]%local_work_size_gpus != 0) global_work_gpus[0] = (global_work_gpus[0]/local_work_size_gpus+1) * local_work_size_gpus;
 
 	printf("%lu, %lu\n", global_work_gpus[0], local_work_size_gpus);
-	err = clEnqueueNDRangeKernel(cmd_queue, kernel_swap1, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
+	err = clEnqueueNDRangeKernel(cmd_queue, kernel_swap1, 0, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
 /*#ifdef TWO_GPUS
-	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_swap2, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
+	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_swap2, 0, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }	
 #endif*/
 
@@ -400,9 +395,7 @@ int allocate(float feature[][NFEATURES])
 
 
 	/* Write feature_swap buffers to devices */
-	clFinish(cmd_queue);
 /*#ifdef TWO_GPUS
-	clFinish(cmd_queue2);
 	err = clEnqueueReadBuffer(cmd_queue2, d_feature_swap_gpu1, 0, 0, div_points * NFEATURES * sizeof(float), feature_swap[div_points], 0, 0, 0);
 #endif*/
 	err = clEnqueueReadBuffer(cmd_queue, d_feature_swap_gpu0, 0, 0, NPOINTS * NFEATURES * sizeof(float), feature_swap[0], 0, 0, 0);
@@ -512,9 +505,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	clSetKernelArg(kernel_fpga, 2, sizeof(void *), (void*) &d_distances_fpga);
 
 	size_t global_work_fpga[3] = { npoints_fpga, 1, 1 }; 
-
-	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
-	size_t local_work_size_fpga=NFEATURES*NCLUSTERS; // work group size is defined by RD_WG_SIZE_1 or RD_WG_SIZE_1_0 2014/06/10 17:00:41
+	size_t local_work_size_fpga=NFEATURES*NCLUSTERS;
 	if(global_work_fpga[0]%local_work_size_fpga !=0) global_work_fpga[0]=(global_work_fpga[0]/local_work_size_fpga+1)*local_work_size_fpga;
 
 
@@ -523,28 +514,27 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	/* Enqueue jobs */
 	/* ************ */
 
-	//printf("Lanzando %d threads en GPU0\n", global_work_gpus[0]);
 	err = clEnqueueNDRangeKernel(cmd_queue, kernel_assign_gpu1, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+
+#ifdef TWO_GPUS
+	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_assign_gpu2, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+#endif
 
 	err = clEnqueueNDRangeKernel(cmd_queue_fpga, kernel_fpga, 1, NULL, global_work_fpga, &local_work_size_fpga, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
 #ifdef TWO_GPUS
-	//printf("Lanzando %d threads en GPU1\n", global_work_gpus[0]);
-	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_assign_gpu2, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
-#endif
-
-	printf("reading\n");
-	err = clEnqueueReadBuffer(cmd_queue, d_distances_gpu0, 0, 0, npoints_gpu * NCLUSTERS * sizeof(float), &distances_OCL[0], 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: GPU0 Memcopy Out-> %d\n", err); return -1; }
-	printf("end of reading gpu0\n");
-#ifdef TWO_GPUS
-	err = clEnqueueReadBuffer(cmd_queue2, d_distances_gpu1, 0, 0, npoints_gpu * NCLUSTERS * sizeof(float), &distances_OCL[npoints_gpu], 0, 0, 0);
+	printf("reading gpu1\n");
+	err = clEnqueueReadBuffer(cmd_queue2, d_distances_gpu1, 0, 0, npoints_gpu * NCLUSTERS * sizeof(float), &distances_OCL[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU1 Memcopy Out-> %d\n", err); return -1; }
 	printf("end of reading gpu1\n");
 #endif
+	printf("reading gpu0\n");
+	err = clEnqueueReadBuffer(cmd_queue, d_distances_gpu0, 0, 0, npoints_gpu * NCLUSTERS * sizeof(float), &distances_OCL[0], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: GPU0 Memcopy Out-> %d\n", err); return -1; }
+	printf("end of reading gpu0\nreading fpga\n");
 	err = clEnqueueReadBuffer(cmd_queue_fpga, d_distances_fpga, 0, 0, npoints_fpga * NCLUSTERS * sizeof(float), &distances_OCL[npoints_gpu*divider], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: FPGA Memcopy Out-> %d\n", err); return -1; }
 	printf("end of reading\n");
