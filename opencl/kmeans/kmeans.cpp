@@ -449,6 +449,7 @@ void deallocateMemory()
 	clReleaseMemObject(d_cluster_fpga);
 	clReleaseMemObject(d_distances_fpga);
 
+	free(distances_OCL[0]);
 	free(distances_OCL);
 }
 
