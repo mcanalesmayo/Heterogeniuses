@@ -146,7 +146,7 @@ static int initialize()
 	/* **** */
 
 	// Intel Altera is idx=0
-	cl_context_properties ctxprop_fpga[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)platform_ids[0], 0};
+	/*cl_context_properties ctxprop_fpga[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)platform_ids[0], 0};
 	context_fpga = clCreateContextFromType(ctxprop_fpga, CL_DEVICE_TYPE_ACCELERATOR, NULL, NULL, NULL);
 	if( !context_fpga ) { printf("ERROR: clCreateContextFromType(%s) failed\n", "FPGA"); return -1; }
 
@@ -161,7 +161,7 @@ static int initialize()
 
 	// create command queue for the first device
 	cmd_queue_fpga = clCreateCommandQueue( context_fpga, device_list_fpga[0], 0, NULL );
-	if( !cmd_queue_fpga ) { printf("ERROR: clCreateCommandQueue() failed\n"); return -1; }
+	if( !cmd_queue_fpga ) { printf("ERROR: clCreateCommandQueue() failed\n"); return -1; }*/
 
 	free(platform_ids);
 
@@ -224,11 +224,11 @@ cl_kernel kernel_swap1;
 
 #ifdef TWO_GPUS
 cl_kernel kernel_assign_gpu2;
-// cl_kernel kernel_swap2;
+cl_kernel kernel_swap2;
 #endif
 
-static float my_new_centers[NCLUSTERS][NFEATURES];
-static int my_new_centers_len[NCLUSTERS];
+float my_new_centers[NCLUSTERS][NFEATURES];
+int my_new_centers_len[NCLUSTERS];
 float **distances_OCL;
 float *feature_d;
 float *clusters_d;
@@ -292,14 +292,14 @@ int allocate(float feature[][NFEATURES])
 #ifdef TWO_GPUS
 	kernel_assign_gpu2 = clCreateKernel(prog_gpus, kernel_assign_gpu_name, &err);  
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
-/*	kernel_swap2 = clCreateKernel(prog_gpus, kernel_swap_name, &err);  
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }*/
+	kernel_swap2 = clCreateKernel(prog_gpus, kernel_swap_name, &err);  
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
 #endif
 
 	free(source);
 	clReleaseProgram(prog_gpus);
 
-	int div_points=NPOINTS;
+	//int div_points=NPOINTS;
 	npoints_fpga = bestFpgaWorkload(NPOINTS, NFEATURES, NCLUSTERS);
 	npoints_gpu = (NPOINTS - npoints_fpga)/divider;
 	
@@ -307,7 +307,7 @@ int allocate(float feature[][NFEATURES])
 	/* Whole swap on a single GPU */
 	d_feature_gpu0 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_gpu0 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
-	d_feature_swap_gpu0 = clCreateBuffer(context_gpus, CL_MEM_READ_WRITE, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
+	d_feature_swap_gpu0 = clCreateBuffer(context_gpus, CL_MEM_READ_WRITE, npoints_gpu * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_gpu0 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
 	d_cluster_gpu0 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NCLUSTERS * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster_gpu0 (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
@@ -315,9 +315,9 @@ int allocate(float feature[][NFEATURES])
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_distances_gpu0 (size:%d) => %d\n", npoints_gpu * NCLUSTERS, err); return -1;}
 
 #ifdef TWO_GPUS		
-	/*d_feature_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, div_points * NFEATURES * sizeof(float), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_gpu1 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}*/
-	d_feature_swap_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
+	d_feature_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_gpu1 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
+	d_feature_swap_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_WRITE, npoints_gpu * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_gpu1 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
 	d_cluster_gpu1 = clCreateBuffer(context_gpus, CL_MEM_READ_ONLY, NCLUSTERS * NFEATURES  * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster_gpu1 (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
@@ -327,27 +327,25 @@ int allocate(float feature[][NFEATURES])
 
 	//CHANGED TO NON-BLOCKING
 	//write buffers
-	err = clEnqueueWriteBuffer(cmd_queue, d_feature_gpu0, 0, 0, NPOINTS * NFEATURES * sizeof(float), feature[0], 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_gpu0 (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1; }
-/*	err = clEnqueueWriteBuffer(cmd_queue, d_feature_gpu0, 0, 0, div_points * NFEATURES * sizeof(float), feature[0], 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_gpu0 (size:%d) => %d\n", div_points * NFEATURES, err); return -1; }
+	err = clEnqueueWriteBuffer(cmd_queue, d_feature_gpu0, 0, 0, npoints_gpu * NFEATURES * sizeof(float), feature[0], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_gpu0 (size:%d) => %d\n", npoints_gpu * NFEATURES, err); return -1; }
 #ifdef TWO_GPUS
-	err = clEnqueueWriteBuffer(cmd_queue2, d_feature_gpu1, 0, 0, div_points * NFEATURES * sizeof(float), feature[div_points], 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_gpu1 (size:%d) => %d\n", div_points * NFEATURES, err); return -1; }
-#endif*/
+	err = clEnqueueWriteBuffer(cmd_queue2, d_feature_gpu1, 0, 0, npoints_gpu * NFEATURES * sizeof(float), feature[npoints_gpu], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_gpu1 (size:%d) => %d\n", npoints_gpu * NFEATURES, err); return -1; }
+#endif
 
-	// Let a GPU manage the feature swap, adding another kernel to the FPGA device would incur in overheading
+	// Let GPUs manage the feature swap, adding another kernel to the FPGA device would incur in overheading
 	clSetKernelArg(kernel_swap1, 0, sizeof(void *), (void*) &d_feature_gpu0);
 	clSetKernelArg(kernel_swap1, 1, sizeof(void *), (void*) &d_feature_swap_gpu0);
-	clSetKernelArg(kernel_swap1, 2, sizeof(cl_int), (void*) &div_points);
+	clSetKernelArg(kernel_swap1, 2, sizeof(cl_int), (void*) &npoints_gpu);
 
-/*#ifdef TWO_GPUS
+#ifdef TWO_GPUS
 	clSetKernelArg(kernel_swap2, 0, sizeof(void *), (void*) &d_feature_gpu1);
 	clSetKernelArg(kernel_swap2, 1, sizeof(void *), (void*) &d_feature_swap_gpu1);
-	clSetKernelArg(kernel_swap2, 2, sizeof(cl_int), (void*) &div_points);
-#endif*/
+	clSetKernelArg(kernel_swap2, 2, sizeof(cl_int), (void*) &npoints_gpu);
+#endif
 
-	size_t global_work_gpus[3] = { div_points, 1, 1 };
+	size_t global_work_gpus[3] = { npoints_gpu, 1, 1 };
 	size_t local_work_size_gpus = BLOCK_SIZE;
 	if(global_work_gpus[0]%local_work_size_gpus != 0) global_work_gpus[0] = (global_work_gpus[0]/local_work_size_gpus+1) * local_work_size_gpus;
 
@@ -357,10 +355,10 @@ int allocate(float feature[][NFEATURES])
 	err = clEnqueueNDRangeKernel(cmd_queue, kernel_swap1, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU0 kernel_swap clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
-/*#ifdef TWO_GPUS
+#ifdef TWO_GPUS
 	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_swap2, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU1 kernel_swap clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }	
-#endif*/
+#endif
 
 
 
@@ -368,7 +366,7 @@ int allocate(float feature[][NFEATURES])
 	/* FPGA program */
 	/* ************ */
 
-	cl_device_id device = device_list_fpga[0];
+	/*cl_device_id device = device_list_fpga[0];
 
 	// Create the FPGA program.
   	std::string binary_file = aocl_utils::getBoardBinaryFile(STR(AOCX_PATH), device);
@@ -378,31 +376,31 @@ int allocate(float feature[][NFEATURES])
   	err = clBuildProgram(prog_fpga, 0, NULL, NULL, NULL, NULL);
   	if (err != CL_SUCCESS) { printf("ERROR: FPGA clBuildProgram() => %d\n", err); return -1; }
 	
-	char const *kernel_assign_fpga_name  = "kmeans_assign";
+	char const *kernel_assign_fpga_name  = "kmeans_assign";*/
 	/*char const *kernel_swap  = "kmeans_swap";*/	
 		
-	kernel_fpga = clCreateKernel(prog_fpga, kernel_assign_fpga_name, &err);  
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }
+	/*kernel_fpga = clCreateKernel(prog_fpga, kernel_assign_fpga_name, &err);  
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }*/
 	/*kernel2 = clCreateKernel(prog_fpga, kernel_swap, &err);  
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateKernel() 0 => %d\n", err); return -1; }*/
 		
-	clReleaseProgram(prog_fpga);	
+	/*clReleaseProgram(prog_fpga);*/
 	
 	/*d_feature_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_ONLY, npoints_fpga * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_fpga (size:%d) => %d\n", npoints_fpga * NFEATURES, err); return -1;}*/
-	d_feature_swap_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_ONLY, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
+	/*d_feature_swap_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_ONLY, NPOINTS * NFEATURES * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_feature_swap_fpga (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1;}
 	d_cluster_fpga = clCreateBuffer(context_fpga, CL_MEM_READ_ONLY, NCLUSTERS * NFEATURES  * sizeof(float), NULL, &err );
 	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_cluster_fpga (size:%d) => %d\n", NCLUSTERS * NFEATURES, err); return -1;}
 	d_distances_fpga = clCreateBuffer(context_fpga, CL_MEM_WRITE_ONLY, npoints_fpga * NCLUSTERS * sizeof(float), NULL, &err );
-	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_distances_fpga (size:%d) => %d\n", npoints_fpga * NCLUSTERS, err); return -1;}
+	if(err != CL_SUCCESS) { printf("ERROR: clCreateBuffer d_distances_fpga (size:%d) => %d\n", npoints_fpga * NCLUSTERS, err); return -1;}*/
 
 
 	/* Write feature_swap buffers to devices */
 /*#ifdef TWO_GPUS
 	err = clEnqueueReadBuffer(cmd_queue2, d_feature_swap_gpu1, 0, 0, div_points * NFEATURES * sizeof(float), feature_swap[div_points], 0, 0, 0);
 #endif*/
-	err = clEnqueueReadBuffer(cmd_queue, d_feature_swap_gpu0, 0, 0, NPOINTS * NFEATURES * sizeof(float), feature_swap[0], 0, 0, 0);
+	/*err = clEnqueueReadBuffer(cmd_queue, d_feature_swap_gpu0, 0, 0, NPOINTS * NFEATURES * sizeof(float), feature_swap[0], 0, 0, 0);
 
 	clFinish(cmd_queue);
 #ifdef TWO_GPUS
@@ -413,7 +411,7 @@ int allocate(float feature[][NFEATURES])
 	err = clEnqueueWriteBuffer(cmd_queue, d_feature_swap_gpu0, 0, 0, NPOINTS * NFEATURES * sizeof(float), feature_swap[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_swap_gpu0 (size:%d) => %d\n", npoints_gpu * NFEATURES, err); return -1; }
 	err = clEnqueueWriteBuffer(cmd_queue_fpga, d_feature_swap_fpga, 0, 0, NPOINTS * NFEATURES * sizeof(float), feature_swap[0], 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_swap_fpga (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1; }
+	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_feature_swap_fpga (size:%d) => %d\n", NPOINTS * NFEATURES, err); return -1; }*/
 	
 	// point to clusters distances
 	posix_memalign((void **) &distances_OCL, ALIGNMENT, NPOINTS * sizeof(float *));
@@ -436,9 +434,9 @@ void deallocateMemory()
 #endif
 
 	//clReleaseMemObject(d_feature_fpga);
-	clReleaseMemObject(d_feature_swap_fpga);
+	/*clReleaseMemObject(d_feature_swap_fpga);
 	clReleaseMemObject(d_cluster_fpga);
-	clReleaseMemObject(d_distances_fpga);
+	clReleaseMemObject(d_distances_fpga);*/
 
 	free(distances_OCL[0]);
 	free(distances_OCL);
@@ -501,7 +499,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	/* FPGA */
 	/* **** */
 
-	err = clEnqueueWriteBuffer(cmd_queue_fpga, d_cluster_fpga, 1, 0, NCLUSTERS * NFEATURES * sizeof(float), clusters[0], 0, 0, 0);
+	/*err = clEnqueueWriteBuffer(cmd_queue_fpga, d_cluster_fpga, 1, 0, NCLUSTERS * NFEATURES * sizeof(float), clusters[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_cluster_gpu0 (size:%d) => %d\n", NPOINTS, err); return -1; }
 
 	clSetKernelArg(kernel_fpga, 0, sizeof(void *), (void*) &d_feature_swap_fpga);
@@ -510,7 +508,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 
 	size_t global_work_fpga[3] = { npoints_fpga, 1, 1 }; 
 	size_t local_work_size_fpga=NFEATURES*NCLUSTERS;
-	if(global_work_fpga[0]%local_work_size_fpga !=0) global_work_fpga[0]=(global_work_fpga[0]/local_work_size_fpga+1)*local_work_size_fpga;
+	if(global_work_fpga[0]%local_work_size_fpga !=0) global_work_fpga[0]=(global_work_fpga[0]/local_work_size_fpga+1)*local_work_size_fpga;*/
 
 
 
@@ -518,40 +516,37 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	/* Enqueue jobs */
 	/* ************ */
 
-	printf("GPU0 enqueueing kernel\n");
 	err = clEnqueueNDRangeKernel(cmd_queue, kernel_assign_gpu1, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU0 kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
 #ifdef TWO_GPUS
-	printf("GPU1 enqueueing kernel\n");
 	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_assign_gpu2, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU1 kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 #endif
+	/*err = clEnqueueNDRangeKernel(cmd_queue_fpga, kernel_fpga, 1, NULL, global_work_fpga, &local_work_size_fpga, 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: FPGA kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }*/
 
-	printf("FPGA enqueueing kernel\n");
-	err = clEnqueueNDRangeKernel(cmd_queue_fpga, kernel_fpga, 1, NULL, global_work_fpga, &local_work_size_fpga, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: FPGA kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
-	printf("end of reading gpu0\nreading fpga\n");
-	err = clEnqueueReadBuffer(cmd_queue_fpga, d_distances_fpga, 1, 0, npoints_fpga * NCLUSTERS * sizeof(float), distances_OCL[npoints_gpu*divider], 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: FPGA Memcopy Out-> %d\n", err); return -1; }
-	printf("end of reading\n");
+	/*err = clEnqueueReadBuffer(cmd_queue_fpga, d_distances_fpga, 0, 0, npoints_fpga * NCLUSTERS * sizeof(float), distances_OCL[npoints_gpu*divider], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: FPGA Memcopy Out-> %d\n", err); return -1; }*/
 #ifdef TWO_GPUS
-	printf("reading gpu1\n");
-	err = clEnqueueReadBuffer(cmd_queue2, d_distances_gpu1, 1, 0, npoints_gpu * NCLUSTERS * sizeof(float), distances_OCL[npoints_gpu], 0, 0, 0);
+	err = clEnqueueReadBuffer(cmd_queue2, d_distances_gpu1, 0, 0, npoints_gpu * NCLUSTERS * sizeof(float), distances_OCL[npoints_gpu], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU1 Memcopy Out-> %d\n", err); return -1; }
-	printf("end of reading gpu1\n");
 #endif
-	printf("reading gpu0\n");
-	err = clEnqueueReadBuffer(cmd_queue, d_distances_gpu0, 1, 0, npoints_gpu * NCLUSTERS * sizeof(float), distances_OCL[0], 0, 0, 0);
+	err = clEnqueueReadBuffer(cmd_queue, d_distances_gpu0, 0, 0, npoints_gpu * NCLUSTERS * sizeof(float), distances_OCL[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU0 Memcopy Out-> %d\n", err); return -1; }
 
 #ifdef TWO_GPUS
 	clFinish(cmd_queue2);
 #endif
 	clFinish(cmd_queue);
-	clFinish(cmd_queue_fpga);
+	//clFinish(cmd_queue_fpga);
 	
+	/*for(i=0; i<NPOINTS; i++){
+		for(int j=0; j<NCLUSTERS; j++){
+			if (i % 16 == 0 && j % 16 == 0) printf("distances_OCL[%d][%d] = %lf\n", i, j, distances_OCL[i][j]);
+		}
+	}*/
 
 
 	/* ********* */
@@ -579,7 +574,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 			my_new_centers[i][j] = 0.0;
 		}
 	}
-	#pragma omp parallel private(i,j,cluster_id,my_closest_distance) firstprivate(my_new_centers,my_new_centers_len) shared(distances_OCL,membership,new_centers,new_centers_len,delta)
+	#pragma omp parallel private(i,j,cluster_id,my_closest_distance) firstprivate(my_new_centers,my_new_centers_len) shared(features,distances_OCL,membership,new_centers,new_centers_len,delta)
 	{
 		#pragma omp for schedule(guided) reduction(+:delta)
 		for (i=0; i<NPOINTS; i++)
@@ -608,6 +603,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 				my_new_centers[cluster_id][j] += features[i][j];
 			}
 		}
+
 		for(i = 0; i < NCLUSTERS; i++){
 			#pragma omp atomic
 			new_centers_len[i] += my_new_centers_len[i];
@@ -621,7 +617,8 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 
 	// for(i=0; i<NCLUSTERS; i++){
 	// 	for(j=0; j<NFEATURES; j++){
-	// 		if (new_centers[i][j] != new_centers[i][j]) printf("new_centers[%d][%d] = %lf\n", i, j, new_centers[i][j]);
+	// 		//if (new_centers[i][j] != new_centers[i][j]) printf("new_centers[%d][%d] = %lf\n", i, j, new_centers[i][j]);
+	// 		printf("new_centers_len[%d] = %d\n", i, new_centers_len[i]);
 	// 	}
 	// }
 

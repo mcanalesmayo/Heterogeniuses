@@ -17,10 +17,11 @@ kmeans_kernel_assign(__global float* restrict feature,
 		for (int c=0; c < NCLUSTERS; c++) {
 			float dist = 0.0;
 			for (int f=0; f<NFEATURES; f++){
-				float diff = feature[f * NPOINTS + gid]-clusters[c * NFEATURES + f];
+				float diff = feature[f * npoints + gid]-clusters[c * NFEATURES + f];
 				dist += pown(diff, 2);
 			}
 
+			//if (gid % 16 == 0 && c % 16 == 0) printf("distances[%d] = %lf\n", gid * NCLUSTERS + c, dist);
 			distances[gid * NCLUSTERS + c] = dist;
 		}
 	}
@@ -36,6 +37,6 @@ kmeans_swap(__global float* restrict feature,
 {
 	unsigned int gid = get_global_id(0);
 	if (gid < npoints){
-		for(int f = 0; f < NFEATURES; f++) feature_swap[f * NPOINTS + gid] = feature[gid * NFEATURES + f];
+		for(int f = 0; f < NFEATURES; f++) feature_swap[f * npoints + gid] = feature[gid * NFEATURES + f];
 	}
 }
