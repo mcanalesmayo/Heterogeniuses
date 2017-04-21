@@ -227,6 +227,8 @@ cl_kernel kernel_assign_gpu2;
 // cl_kernel kernel_swap2;
 #endif
 
+static float my_new_centers[NCLUSTERS][NFEATURES];
+static int my_new_centers_len[NCLUSTERS];
 float **distances_OCL;
 float *feature_d;
 float *clusters_d;
@@ -352,11 +354,11 @@ int allocate(float feature[][NFEATURES])
 	printf("global_work_gpus[0] = %d, local_work_size_gpus = %d\n", global_work_gpus[0], local_work_size_gpus);
 
 	printf("%lu, %lu\n", global_work_gpus[0], local_work_size_gpus);
-	err = clEnqueueNDRangeKernel(cmd_queue, kernel_swap1, 0, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
+	err = clEnqueueNDRangeKernel(cmd_queue, kernel_swap1, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU0 kernel_swap clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
 /*#ifdef TWO_GPUS
-	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_swap2, 0, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
+	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_swap2, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU1 kernel_swap clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }	
 #endif*/
 
@@ -516,30 +518,33 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	/* Enqueue jobs */
 	/* ************ */
 
+	printf("GPU0 enqueueing kernel\n");
 	err = clEnqueueNDRangeKernel(cmd_queue, kernel_assign_gpu1, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU0 kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
 #ifdef TWO_GPUS
+	printf("GPU1 enqueueing kernel\n");
 	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_assign_gpu2, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU1 kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 #endif
 
+	printf("FPGA enqueueing kernel\n");
 	err = clEnqueueNDRangeKernel(cmd_queue_fpga, kernel_fpga, 1, NULL, global_work_fpga, &local_work_size_fpga, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: FPGA kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
+	printf("end of reading gpu0\nreading fpga\n");
+	err = clEnqueueReadBuffer(cmd_queue_fpga, d_distances_fpga, 1, 0, npoints_fpga * NCLUSTERS * sizeof(float), distances_OCL[npoints_gpu*divider], 0, 0, 0);
+	if(err != CL_SUCCESS) { printf("ERROR: FPGA Memcopy Out-> %d\n", err); return -1; }
+	printf("end of reading\n");
 #ifdef TWO_GPUS
 	printf("reading gpu1\n");
-	err = clEnqueueReadBuffer(cmd_queue2, d_distances_gpu1, 0, 0, npoints_gpu * NCLUSTERS * sizeof(float), &distances_OCL[0], 0, 0, 0);
+	err = clEnqueueReadBuffer(cmd_queue2, d_distances_gpu1, 1, 0, npoints_gpu * NCLUSTERS * sizeof(float), distances_OCL[npoints_gpu], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU1 Memcopy Out-> %d\n", err); return -1; }
 	printf("end of reading gpu1\n");
 #endif
 	printf("reading gpu0\n");
-	err = clEnqueueReadBuffer(cmd_queue, d_distances_gpu0, 0, 0, npoints_gpu * NCLUSTERS * sizeof(float), &distances_OCL[0], 0, 0, 0);
+	err = clEnqueueReadBuffer(cmd_queue, d_distances_gpu0, 1, 0, npoints_gpu * NCLUSTERS * sizeof(float), distances_OCL[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU0 Memcopy Out-> %d\n", err); return -1; }
-	printf("end of reading gpu0\nreading fpga\n");
-	err = clEnqueueReadBuffer(cmd_queue_fpga, d_distances_fpga, 0, 0, npoints_fpga * NCLUSTERS * sizeof(float), &distances_OCL[npoints_gpu*divider], 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: FPGA Memcopy Out-> %d\n", err); return -1; }
-	printf("end of reading\n");
 
 #ifdef TWO_GPUS
 	clFinish(cmd_queue2);
@@ -557,8 +562,6 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	end = omp_get_wtime();
 	printf("kernel time: %lf\n", end - start);
 	start = end;
-	float my_new_centers[NCLUSTERS][NFEATURES];
-	int my_new_centers_len[NCLUSTERS];
 	float my_closest_distance;
 	int cluster_id;
 
