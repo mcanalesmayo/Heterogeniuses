@@ -349,13 +349,15 @@ int allocate(float feature[][NFEATURES])
 	size_t local_work_size_gpus = BLOCK_SIZE;
 	if(global_work_gpus[0]%local_work_size_gpus != 0) global_work_gpus[0] = (global_work_gpus[0]/local_work_size_gpus+1) * local_work_size_gpus;
 
+	printf("global_work_gpus[0] = %d, local_work_size_gpus = %d\n", global_work_gpus[0], local_work_size_gpus);
+
 	printf("%lu, %lu\n", global_work_gpus[0], local_work_size_gpus);
 	err = clEnqueueNDRangeKernel(cmd_queue, kernel_swap1, 0, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+	if(err != CL_SUCCESS) { printf("ERROR: GPU0 kernel_swap clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
 /*#ifdef TWO_GPUS
 	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_swap2, 0, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }	
+	if(err != CL_SUCCESS) { printf("ERROR: GPU1 kernel_swap clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }	
 #endif*/
 
 
@@ -515,15 +517,15 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	/* ************ */
 
 	err = clEnqueueNDRangeKernel(cmd_queue, kernel_assign_gpu1, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+	if(err != CL_SUCCESS) { printf("ERROR: GPU0 kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
 #ifdef TWO_GPUS
 	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_assign_gpu2, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+	if(err != CL_SUCCESS) { printf("ERROR: GPU1 kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 #endif
 
 	err = clEnqueueNDRangeKernel(cmd_queue_fpga, kernel_fpga, 1, NULL, global_work_fpga, &local_work_size_fpga, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
+	if(err != CL_SUCCESS) { printf("ERROR: FPGA kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
 #ifdef TWO_GPUS
 	printf("reading gpu1\n");
