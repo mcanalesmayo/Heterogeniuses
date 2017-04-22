@@ -458,8 +458,8 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 		   int     *new_centers_len,
            float  **new_centers)	
 {
-	double start = omp_get_wtime();
-	double end;
+	// double start = omp_get_wtime();
+	// double end;
 	int delta = 0;
 	int i, j, k;
 	cl_int err = 0;
@@ -555,9 +555,9 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	/* ********* */
 
 	omp_set_num_threads(8);
-	end = omp_get_wtime();
-	printf("kernel time: %lf\n", end - start);
-	start = end;
+	// end = omp_get_wtime();
+	// printf("kernel time: %lf\n", end - start);
+	// start = end;
 	float my_closest_distance;
 	int cluster_id;
 
@@ -623,8 +623,8 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	// 	}
 	// }
 
-	end = omp_get_wtime();
-	printf("omp reduction time: %lf\n", end - start);
+	// end = omp_get_wtime();
+	// printf("omp reduction time: %lf\n", end - start);
 
 	return delta;
 }
