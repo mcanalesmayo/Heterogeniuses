@@ -189,7 +189,7 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 		// }
 		
 		// // Put "file" then k then ".txt" in to filename.
-		snprintf(buffer, sizeof(char) * 32, "./files/file%i.txt",c);
+		/*snprintf(buffer, sizeof(char) * 32, "./files/file%i.txt",c);
 
 
 		// Saving the output		
@@ -205,7 +205,7 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 			fprintf(f, "%d %f %f\n", membership[i], feature[i][0], feature[i][1]);
 		} 
 
-		fclose(f);
+		fclose(f);*/
 
 		c++;
     } while ((delta > threshold) && (loop++ < 500));	/* makes sure loop terminates */
