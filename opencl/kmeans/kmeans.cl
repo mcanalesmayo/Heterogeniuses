@@ -16,6 +16,7 @@ __kernel void kmeans_assign(__global float* restrict feature,
     barrier(CLK_LOCAL_MEM_FENCE);
 
     float min_dist=FLT_MAX;
+    #pragma unroll 4
     for (int c=0; c < NCLUSTERS; c++) {
         float dist = 0.0;
         #pragma unroll
