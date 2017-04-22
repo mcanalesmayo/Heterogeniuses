@@ -349,8 +349,6 @@ int allocate(float feature[][NFEATURES])
 	size_t local_work_size_gpus = BLOCK_SIZE;
 	if(global_work_gpus[0]%local_work_size_gpus != 0) global_work_gpus[0] = (global_work_gpus[0]/local_work_size_gpus+1) * local_work_size_gpus;
 
-	printf("global_work_gpus[0] = %d, local_work_size_gpus = %d\n", global_work_gpus[0], local_work_size_gpus);
-
 	printf("%lu, %lu\n", global_work_gpus[0], local_work_size_gpus);
 	err = clEnqueueNDRangeKernel(cmd_queue, kernel_swap1, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU0 kernel_swap clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
@@ -457,8 +455,8 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 		   int     *new_centers_len,
            float  **new_centers)	
 {
-	double start = omp_get_wtime();
-	double end;
+	// double start = omp_get_wtime();
+	// double end;
 	int delta = 0;
 	int i, j, k;
 	cl_int err = 0;
@@ -554,9 +552,9 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	/* ********* */
 
 	omp_set_num_threads(8);
-	end = omp_get_wtime();
-	printf("kernel time: %lf\n", end - start);
-	start = end;
+	// end = omp_get_wtime();
+	// printf("kernel time: %lf\n", end - start);
+	// start = end;
 	float my_closest_distance;
 	int cluster_id;
 
@@ -622,8 +620,8 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	// 	}
 	// }
 
-	end = omp_get_wtime();
-	printf("omp reduction time: %lf\n", end - start);
+	// end = omp_get_wtime();
+	// printf("omp reduction time: %lf\n", end - start);
 
 	return delta;
 }

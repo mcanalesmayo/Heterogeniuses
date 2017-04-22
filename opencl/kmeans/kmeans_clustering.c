@@ -72,7 +72,7 @@
 
 extern double wtime(void);
 
-static int initial[NPOINTS];	/* used to hold the index of points not yet selected
+/*static int initial[NPOINTS];*/	/* used to hold the index of points not yet selected
 								   prevents the "birthday problem" of dual selection (?)
 								   considered holding initial cluster indices, but changed due to
 								   possible, though unlikely, infinite loops */
@@ -105,24 +105,25 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
         clusters[i] = clusters[i-1] + NFEATURES;
 
 	/* initialize the random clusters */
-	#pragma omp parallel for private(i) schedule(static)
+	/*#pragma omp parallel for private(i) schedule(static)
 	for (i = 0; i < NPOINTS; i++)
 	{
 		initial[i] = i;
 	}
-	initial_points = NPOINTS;
+	initial_points = NPOINTS;*/
 
     /* randomly pick cluster centers */
     for (i=0; i<NCLUSTERS && initial_points >= 0; i++) { // only simple stop conditions allowed for omp (i.e.,>,<,>=,..)
-        for (j=0; j<NFEATURES; j++)
-            clusters[i][j] = feature[initial[n]][j];	// remapped
+    	//int n = (int)random() % NPOINTS;
+        for (j=0; j<NFEATURES; j++) clusters[i][j] = feature[n][j];
+        //for (j=0; j<NFEATURES; j++) clusters[i][j] = feature[initial[n]][j];	// remapped
 
 		/* swap the selected index to the end (not really necessary,
 		   could just move the end up) */
-		temp = initial[n];
+		/*temp = initial[n];
 		initial[n] = initial[initial_points-1];
 		initial[initial_points-1] = temp;
-		initial_points--;
+		initial_points--;*/
 		n++;
     }
 
@@ -165,13 +166,21 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 		//#pragma omp parallel for schedule(guided) collapse(1) private(i,j) shared(new_centers_len,clusters,new_centers)
 		for (i=0; i<NCLUSTERS; i++) { // very little work, not proper for omp unless using really high nfeatures or ncluster
 			for (j=0; j<NFEATURES; j++) {
-				if (new_centers_len[i] > 0)
-					clusters[i][j] = new_centers[i][j] / new_centers_len[i];	/* take average i.e. sum/n */
+				if (new_centers_len[i] > 0) clusters[i][j] = new_centers[i][j] / new_centers_len[i];	/* take average i.e. sum/n */
 				new_centers[i][j] = 0.0;	/* set back to 0 */
 			}
-			printf("Cluster %d: %d points\n", i, new_centers_len[i]);
+			//printf("Cluster %d: %d points\n", i, new_centers_len[i]);
 			new_centers_len[i] = 0;			/* set back to 0 */
 		}
+
+		// printf("\n================= Centroid Coordinates =================\n");
+  //       for(i = 0; i < NCLUSTERS; i++){
+  //           printf("Cluster %d:", i);
+  //           for(j = 0; j < NFEATURES; j++){
+  //               printf(" %.4f", clusters[i][j]);
+  //           }
+  //           printf("\n");
+  //       }
 
 		// for(i=0; i<NCLUSTERS; i++){
 		// 	for(j=0; j<NFEATURES; j++){
@@ -180,10 +189,10 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 		// }
 		
 		// // Put "file" then k then ".txt" in to filename.
-		 snprintf(buffer, sizeof(char) * 32, "./files/file%i.txt",c);
+		snprintf(buffer, sizeof(char) * 32, "./files/file%i.txt",c);
 
 
-		// /* Saving the output */		
+		// Saving the output		
 		FILE *f = fopen(buffer, "w");
 		if (f == NULL)
 		{
@@ -192,7 +201,7 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 		}		
 
 		for(int i = 0; i < NPOINTS; i++) {
-			/* Print membership and features */
+			//Print membership and features
 			fprintf(f, "%d %f %f\n", membership[i], feature[i][0], feature[i][1]);
 		} 
 
@@ -202,7 +211,6 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
     } while ((delta > threshold) && (loop++ < 500));	/* makes sure loop terminates */
 	
 	cluster_timing = omp_get_wtime() - cluster_timing;
-
 
 	// /* Saving the output */		
 	// FILE *f = fopen("file.txt", "w");

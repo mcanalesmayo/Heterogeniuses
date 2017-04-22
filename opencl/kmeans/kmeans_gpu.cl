@@ -21,7 +21,6 @@ kmeans_kernel_assign(__global float* restrict feature,
 				dist += pown(diff, 2);
 			}
 
-			//if (gid % 16 == 0 && c % 16 == 0) printf("distances[%d] = %lf\n", gid * NCLUSTERS + c, dist);
 			distances[gid * NCLUSTERS + c] = dist;
 		}
 	}
