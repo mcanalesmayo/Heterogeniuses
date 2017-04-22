@@ -62,17 +62,17 @@
 static cl_platform_id  *platform_ids;
 static cl_context	    context_fpga;
 static cl_context	    context_gpus;
-static cl_command_queue cmd_queue_fpga;
+//static cl_command_queue cmd_queue_fpga;
 static cl_command_queue cmd_queue;
 #ifdef TWO_GPUS
 static cl_command_queue cmd_queue2;
 #endif
 static cl_device_id    *device_list_gpu;
-static cl_device_id    *device_list_fpga;
+//static cl_device_id    *device_list_fpga;
 static cl_int           num_devices_gpu;
-static cl_int           num_devices_fpga;
+//static cl_int           num_devices_fpga;
 
-static float feature_swap[NPOINTS][NFEATURES] __attribute__ ((aligned (ALIGNMENT)));
+//static float feature_swap[NFEATURES][NPOINTS] __attribute__ ((aligned (ALIGNMENT)));
 
 static int initialize()
 {
@@ -171,37 +171,37 @@ static int initialize()
 static int shutdown()
 {
 	// release resources
-	if( cmd_queue_fpga ) clReleaseCommandQueue( cmd_queue_fpga );
+	//if( cmd_queue_fpga ) clReleaseCommandQueue( cmd_queue_fpga );
 	if( cmd_queue ) clReleaseCommandQueue( cmd_queue );
 #ifdef TWO_GPUS	
 	if( cmd_queue2 ) clReleaseCommandQueue( cmd_queue2 );
 #endif
 	if( context_gpus ) clReleaseContext( context_gpus );
-	if( context_fpga ) clReleaseContext( context_fpga );
+	//if( context_fpga ) clReleaseContext( context_fpga );
 	if( device_list_gpu ) delete device_list_gpu;
-	if( device_list_fpga ) delete device_list_fpga;
+	//if( device_list_fpga ) delete device_list_fpga;
 
 	// reset all variables
-	cmd_queue_fpga = 0;
+	//cmd_queue_fpga = 0;
 	cmd_queue = 0;
 #ifdef TWO_GPUS	
 	cmd_queue2 = 0;
 #endif
 	context_gpus = 0;
-	context_fpga = 0;
+	//context_fpga = 0;
 	device_list_gpu = 0;
-	device_list_fpga = 0;
+	//device_list_fpga = 0;
 	num_devices_gpu = 0;
-	num_devices_fpga = 0;
+	//num_devices_fpga = 0;
 
 	return 0;
 }
 
 //cl_mem d_feature_fpga;
-cl_mem d_feature_swap_fpga;
+/*cl_mem d_feature_swap_fpga;
 cl_mem d_cluster_fpga;
 cl_mem d_distances_fpga;
-cl_mem d_membership_fpga;
+cl_mem d_membership_fpga;*/
 
 cl_mem d_feature_gpu0;
 cl_mem d_feature_swap_gpu0;
@@ -217,7 +217,7 @@ cl_mem d_distances_gpu1;
 cl_mem d_membership_gpu1;
 #endif
 
-cl_kernel kernel_fpga;
+//cl_kernel kernel_fpga;
 
 cl_kernel kernel_assign_gpu1;
 cl_kernel kernel_swap1;
