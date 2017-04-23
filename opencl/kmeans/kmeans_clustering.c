@@ -210,9 +210,5 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 	printf("iterated %d times\n", c);
 	printf("\nTime for do_while Clustering: %.5fsec\n", cluster_timing);
 
-    free(new_centers[0]);
-    free(new_centers);
-    free(new_centers_len);
-
     return clusters;
 }
