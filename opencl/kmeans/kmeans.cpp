@@ -397,7 +397,7 @@ int allocate(float feature[][NFEATURES])
 	int i, f;
 	#pragma omp parallel for private(i,f) schedule(static) collapse(1)
 	for(i=0; i<NPOINTS; i++){
-		for(f = 0; f < NFEATURES; f++) feature_swap[f][(npoints_gpu*divider + i) % NPOINTS] = feature[i][f];
+		for(f = 0; f < NFEATURES; f++) feature_swap[f][(npoints_fpga + i) % NPOINTS] = feature[i][f];
 	}
 
 	/* Write feature_swap buffers to device */
@@ -519,7 +519,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	if(err != CL_SUCCESS) { printf("ERROR: FPGA kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
 	// FPGA only calculates distances, memberships of its points will be calculated by OMP threads
-	err = clEnqueueReadBuffer(cmd_queue_fpga, d_distances_fpga, 0, 0, npoints_fpga * NCLUSTERS * sizeof(float), distances_OCL, 0, 0, 0);
+	err = clEnqueueReadBuffer(cmd_queue_fpga, d_distances_fpga, 0, 0, npoints_fpga * NCLUSTERS * sizeof(float), distances_OCL[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: FPGA Memcopy Out-> %d\n", err); return -1; }
 	// memberships already calculated by GPUs
 #ifdef TWO_GPUS
@@ -533,7 +533,6 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 #endif
 	clFinish(cmd_queue);
 	clFinish(cmd_queue_fpga);
-
 
 	/* ********* */
 	/* Reduction */
@@ -553,9 +552,10 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 			my_new_centers[i][j] = 0.0;
 		}
 	}
-	#pragma omp parallel private(i,j,cluster_id,my_closest_distance) firstprivate(my_new_centers,my_new_centers_len) shared(features,distances_OCL,membership,new_centers,new_centers_len,delta)
+	#pragma omp parallel private(i,j,cluster_id,my_closest_distance) firstprivate(my_new_centers,my_new_centers_len) \
+		shared(features,distances_OCL,membership_OCL,membership,new_centers,new_centers_len,npoints_gpu,divider,npoints_fpga,delta)
 	{
-		#pragma omp for schedule(guided) reduction(+:delta)
+		#pragma omp for schedule(static) reduction(+:delta)
 		for (i=0; i<NPOINTS; i++)
 		{
 			// get closest cluster
@@ -564,7 +564,6 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 				my_closest_distance = FLT_MAX;
 				cluster_id = 0;
 				for(j=0; j<NCLUSTERS; j++){
-					printf("distances_OCL[%d][%d]\n", i - npoints_gpu*divider, j);
 					if (distances_OCL[i - npoints_gpu*divider][j] < my_closest_distance){
 						my_closest_distance = distances_OCL[i - npoints_gpu*divider][j];
 						cluster_id = j;
