@@ -15,11 +15,11 @@ kmeans_kernel_assign(__global float* restrict feature,
 	{
 		float min_dist=FLT_MAX;
 		for (int c=0; c < NCLUSTERS; c++) {
-			float dist = 0;
-			float ans  = 0;
+			float dist = 0.0;
+			float ans  = 0.0;
 			for (int f=0; f<NFEATURES; f++){
-					ans += (feature[f * npoints + gid]-clusters[c * NFEATURES + f])*
-							(feature[f * npoints + gid]-clusters[c * NFEATURES + f]);
+				float diff = feature[f * npoints + gid]-clusters[c * NFEATURES + f];
+				ans += pown(diff, 2);
 			}
 
 			dist = ans;
