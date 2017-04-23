@@ -438,8 +438,8 @@ int main( int argc, char** argv)
 int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
            int    *membership,
 		   float **clusters,
-		   int     *new_centers_len,
-           float  **new_centers)	
+		   int     new_centers_len[NCLUSTERS],
+           float   new_centers[][NFEATURES])	
 {
 	// double start = omp_get_wtime();
 	// double end;
@@ -455,7 +455,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
 	size_t local_work_size_gpus = BLOCK_SIZE2; // work group size is defined by RD_WG_SIZE_1 or RD_WG_SIZE_1_0 2014/06/10 17:00:41
 	if(global_work_gpus[0]%local_work_size_gpus !=0) global_work_gpus[0]=(global_work_gpus[0]/local_work_size_gpus+1)*local_work_size_gpus;
-
+	
 	//CHANGED TO NON BLOCKING
 	err = clEnqueueWriteBuffer(cmd_queue, d_cluster_gpu0, 0, 0, NCLUSTERS * NFEATURES * sizeof(float), clusters[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU0 clEnqueueWriteBuffer d_cluster_gpu0 (size:%d) => %d\n", npoints_gpu, err); return -1; }
@@ -464,7 +464,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	if(err != CL_SUCCESS) { printf("ERROR: GPU1 clEnqueueWriteBuffer d_cluster_gpu0 (size:%d) => %d\n", npoints_gpu, err); return -1; }
 #endif
 	int div_points=npoints_gpu;
-					
+
 	clSetKernelArg(kernel_assign_gpu1, 0, sizeof(void *), (void*) &d_feature_swap_gpu0);
 	clSetKernelArg(kernel_assign_gpu1, 1, sizeof(void *), (void*) &d_cluster_gpu0);
 	clSetKernelArg(kernel_assign_gpu1, 2, sizeof(void *), (void*) &d_membership_gpu0);
@@ -478,14 +478,16 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 #endif
 
 
-
 	/* **** */
 	/* FPGA */
 	/* **** */
 
+
+	printf("asdasd\n");
 	err = clEnqueueWriteBuffer(cmd_queue_fpga, d_cluster_fpga, 1, 0, NCLUSTERS * NFEATURES * sizeof(float), clusters[0], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_cluster_gpu0 (size:%d) => %d\n", NPOINTS, err); return -1; }
 
+	printf("postwritebuffer\n");
 	clSetKernelArg(kernel_fpga, 0, sizeof(void *), (void*) &d_feature_swap_fpga);
 	clSetKernelArg(kernel_fpga, 1, sizeof(void *), (void*) &d_cluster_fpga);
 	clSetKernelArg(kernel_fpga, 2, sizeof(void *), (void*) &d_distances_fpga);
@@ -500,27 +502,33 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	/* Enqueue jobs */
 	/* ************ */
 
+	printf("11111\n");
 	err = clEnqueueNDRangeKernel(cmd_queue, kernel_assign_gpu1, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU0 kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
+	printf("pre_gpu2\n");
 #ifdef TWO_GPUS
 	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_assign_gpu2, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU1 kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 #endif
+	printf("pre_fpga\n");
 	err = clEnqueueNDRangeKernel(cmd_queue_fpga, kernel_fpga, 1, NULL, global_work_fpga, &local_work_size_fpga, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: FPGA kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
 
+	printf("pooostfpga\n");
 	// FPGA only calculates distances, memberships of its points will be calculated by OMP threads
 	err = clEnqueueReadBuffer(cmd_queue_fpga, d_distances_fpga, 0, 0, npoints_fpga * NCLUSTERS * sizeof(float), distances_OCL[npoints_gpu*divider], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: FPGA Memcopy Out-> %d\n", err); return -1; }
+	printf("pppppppp\n");
 	// memberships already calculated by GPUs
 #ifdef TWO_GPUS
 	err = clEnqueueReadBuffer(cmd_queue2, d_membership_gpu1, 0, 0, npoints_gpu * sizeof(int), &membership_OCL[npoints_gpu], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU1 Memcopy Out-> %d\n", err); return -1; }
 #endif
+	printf("xxxxpga\n");
 	err = clEnqueueReadBuffer(cmd_queue, d_membership_gpu0, 0, 0, npoints_gpu * sizeof(int), membership_OCL, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU0 Memcopy Out-> %d\n", err); return -1; }
-
+printf("pre clfinish\n");
 #ifdef TWO_GPUS
 	clFinish(cmd_queue2);
 #endif

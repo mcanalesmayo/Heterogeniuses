@@ -76,6 +76,8 @@ extern double wtime(void);
 								   prevents the "birthday problem" of dual selection (?)
 								   considered holding initial cluster indices, but changed due to
 								   possible, though unlikely, infinite loops */
+int new_centers_len[NCLUSTERS];
+float new_centers[NCLUSTERS][NFEATURES];
 
 /*----< kmeans_clustering() >---------------------------------------------*/
 float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATURES] */
@@ -84,10 +86,8 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 {    
     int      i, j, n = 0;				/* counters */
 	int		 loop=0, temp;
-    int     *new_centers_len;	/* [NCLUSTERS]: no. of points in each cluster */
     int    	 delta = RANDOM_MAX;/* if the points moved */
     float  **clusters;			/* out: [NCLUSTERS][NFEATURES] */
-    float  **new_centers;		/* [NCLUSTERS][NFEATURES] */
 
 	int      initial_points;
 	int		 c = 0;
@@ -101,8 +101,7 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
     posix_memalign((void **) &clusters, ALIGNMENT, NCLUSTERS * sizeof(float *));
     posix_memalign((void **) &clusters[0], ALIGNMENT, NCLUSTERS * NFEATURES * sizeof(float));
 
-    for (i=1; i<NCLUSTERS; i++)
-        clusters[i] = clusters[i-1] + NFEATURES;
+    for (i=1; i<NCLUSTERS; i++) clusters[i] = clusters[i-1] + NFEATURES;
 
 	/* initialize the random clusters */
 	/*#pragma omp parallel for private(i) schedule(static)
@@ -114,37 +113,17 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 
     /* randomly pick cluster centers */
     for (i=0; i<NCLUSTERS && initial_points >= 0; i++) { // only simple stop conditions allowed for omp (i.e.,>,<,>=,..)
-    	//int n = (int)random() % NPOINTS;
         for (j=0; j<NFEATURES; j++) clusters[i][j] = feature[n][j];
-        //for (j=0; j<NFEATURES; j++) clusters[i][j] = feature[initial[n]][j];	// remapped
-
-		/* swap the selected index to the end (not really necessary,
-		   could just move the end up) */
-		/*temp = initial[n];
-		initial[n] = initial[initial_points-1];
-		initial[initial_points-1] = temp;
-		initial_points--;*/
 		n++;
     }
 
 	/* initialize the membership to -1 for all */
-	#pragma omp parallel for private(i) schedule(guided)
+	//#pragma omp parallel for private(i) schedule(static)
     for (i=0; i < NPOINTS; i++) membership[i] = -1;
 
-    /* allocate space for and initialize new_centers_len and new_centers */
-    posix_memalign((void **) &new_centers_len, ALIGNMENT, NCLUSTERS * sizeof(int));
-    posix_memalign((void **) &new_centers, ALIGNMENT, NCLUSTERS * sizeof(float *));
-    posix_memalign((void **) &new_centers[0], ALIGNMENT, NCLUSTERS * NFEATURES * sizeof(float));
-
-    // first iter
-    new_centers_len[0] = 0;
-    for (j=0; j<NFEATURES; j++){
-        new_centers[0][j] = 0.0;
-    }
     // remaining iters
-    for (i=1; i<NCLUSTERS; i++){
+    for (i=0; i<NCLUSTERS; i++){
         new_centers_len[i] = 0;
-        new_centers[i] = new_centers[i-1] + NFEATURES;
         for(j=0; j<NFEATURES; j++){
             new_centers[i][j] = 0.0;
         }

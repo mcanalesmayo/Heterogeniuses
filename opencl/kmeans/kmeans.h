@@ -54,7 +54,7 @@ int     cluster(float features[][NFEATURES], int threshold, float ***cluster_cen
 int setup(int argc, char** argv);
 int allocate(float features[][NFEATURES]);
 void deallocateMemory();
-int	kmeansOCL(float feature[][NFEATURES], int *membership, float **clusters, int *new_centers_len, float  **new_centers);
+int	kmeansOCL(float feature[][NFEATURES], int *membership, float **clusters, int new_centers_len[NCLUSTERS], float new_centers[][NFEATURES]);
 float** kmeans_clustering(float feature[][NFEATURES], int threshold, int *membership);
 
 #endif
