@@ -181,8 +181,10 @@ float** kmeans_clustering(float feature[][NFEATURES],    /* in: [NPOINTS][NFEATU
 
 		for(int i = 0; i < NPOINTS; i++) {
 			//Print membership and features
-			fprintf(f, "%d %f %f\n", membership[i], feature[i][0], feature[i][1]);
-		} 
+			fprintf(f, "%d", membership[i]);
+			for(j = 0; j<NFEATURES; j++) fprintf(f, " %f", feature[i][j]);
+			fprintf(f, "\n");
+		}
 
 		fclose(f);*/
 
