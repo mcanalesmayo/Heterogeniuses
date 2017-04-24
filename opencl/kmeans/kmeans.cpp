@@ -461,8 +461,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	/* **** */
 
 	size_t global_work_gpus[3] = { npoints_gpu, 1, 1 }; 
-	/// Ke Wang adjustable local group size 2013/08/07 10:37:33
-	size_t local_work_size_gpus = BLOCK_SIZE2; // work group size is defined by RD_WG_SIZE_1 or RD_WG_SIZE_1_0 2014/06/10 17:00:41
+	size_t local_work_size_gpus = BLOCK_SIZE2;
 	if(global_work_gpus[0]%local_work_size_gpus !=0) global_work_gpus[0]=(global_work_gpus[0]/local_work_size_gpus+1)*local_work_size_gpus;
 
 	//CHANGED TO NON BLOCKING
@@ -487,24 +486,6 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 #endif
 
 
-
-	/* **** */
-	/* FPGA */
-	/* **** */
-
-	/*err = clEnqueueWriteBuffer(cmd_queue_fpga, d_cluster_fpga, 1, 0, NCLUSTERS * NFEATURES * sizeof(float), clusters[0], 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: clEnqueueWriteBuffer d_cluster_gpu0 (size:%d) => %d\n", NPOINTS, err); return -1; }
-
-	clSetKernelArg(kernel_fpga, 0, sizeof(void *), (void*) &d_feature_swap_fpga);
-	clSetKernelArg(kernel_fpga, 1, sizeof(void *), (void*) &d_cluster_fpga);
-	clSetKernelArg(kernel_fpga, 2, sizeof(void *), (void*) &d_distances_fpga);
-
-	size_t global_work_fpga[3] = { npoints_fpga, 1, 1 }; 
-	size_t local_work_size_fpga=NFEATURES*NCLUSTERS;
-	if(global_work_fpga[0]%local_work_size_fpga !=0) global_work_fpga[0]=(global_work_fpga[0]/local_work_size_fpga+1)*local_work_size_fpga;*/
-
-
-
 	/* ************ */
 	/* Enqueue jobs */
 	/* ************ */
@@ -515,14 +496,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 #ifdef TWO_GPUS
 	err = clEnqueueNDRangeKernel(cmd_queue2, kernel_assign_gpu2, 1, NULL, global_work_gpus, &local_work_size_gpus, 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU1 kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }
-#endif
-	/*err = clEnqueueNDRangeKernel(cmd_queue_fpga, kernel_fpga, 1, NULL, global_work_fpga, &local_work_size_fpga, 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: FPGA kernel_assign clEnqueueNDRangeKernel()=>%d failed\n", err); return -1; }*/
 
-
-	/*err = clEnqueueReadBuffer(cmd_queue_fpga, d_distances_fpga, 0, 0, npoints_fpga * NCLUSTERS * sizeof(float), membership_OCL[npoints_gpu*divider], 0, 0, 0);
-	if(err != CL_SUCCESS) { printf("ERROR: FPGA Memcopy Out-> %d\n", err); return -1; }*/
-#ifdef TWO_GPUS
 	err = clEnqueueReadBuffer(cmd_queue2, d_membership_gpu1, 0, 0, npoints_gpu * sizeof(int), &membership_OCL[npoints_gpu], 0, 0, 0);
 	if(err != CL_SUCCESS) { printf("ERROR: GPU1 Memcopy Out-> %d\n", err); return -1; }
 #endif
@@ -533,13 +507,6 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	clFinish(cmd_queue2);
 #endif
 	clFinish(cmd_queue);
-	//clFinish(cmd_queue_fpga);
-	
-	/*for(i=0; i<NPOINTS; i++){
-		for(int j=0; j<NCLUSTERS; j++){
-			if (i % 16 == 0 && j % 16 == 0) printf("membership_OCL[%d][%d] = %lf\n", i, j, membership_OCL[i][j]);
-		}
-	}*/
 
 
 	/* ********* */
@@ -550,15 +517,7 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 	// end = omp_get_wtime();
 	// printf("kernel time: %lf\n", end - start);
 	// start = end;
-	float my_closest_distance;
 	int cluster_id;
-
-	// // NaN check
-	// for(i=0; i<NCLUSTERS; i++){
-	// 	for(j=0; j<NFEATURES; j++){
-	// 		if (new_centers[i][j] != new_centers[i][j]) printf("new_centers[%d][%d] = %lf\n", i, j, new_centers[i][j]);
-	// 	}
-	// }
 
 	#pragma omp parallel for private(i,j)
 	for (i = 0; i < NCLUSTERS; i++){
@@ -567,9 +526,10 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 			my_new_centers[i][j] = 0.0;
 		}
 	}
-	#pragma omp parallel private(i,j,cluster_id,my_closest_distance) firstprivate(my_new_centers,my_new_centers_len) shared(features,membership_OCL,membership,new_centers,new_centers_len,delta)
+
+	#pragma omp parallel private(i,j,cluster_id) firstprivate(my_new_centers,my_new_centers_len) shared(features,membership_OCL,membership,new_centers,new_centers_len,delta)
 	{
-		#pragma omp for schedule(guided) reduction(+:delta)
+		#pragma omp for schedule(static) reduction(+:delta)
 		for (i=0; i<NPOINTS; i++)
 		{
 			// get closest cluster
@@ -593,19 +553,11 @@ int	kmeansOCL(float features[][NFEATURES],    /* in: [npoints][nfeatures] */
 			#pragma omp atomic
 			new_centers_len[i] += my_new_centers_len[i];
 			for(j=0; j<NFEATURES; j++){
-				//if (new_centers[i][j] != new_centers[i][j]) printf("new_centers[%d][%d] = %lf\n", i, j, new_centers[i][j]);
 				#pragma omp atomic
 				new_centers[i][j] += my_new_centers[i][j];	
 			}
 		}
 	}
-
-	// for(i=0; i<NCLUSTERS; i++){
-	// 	for(j=0; j<NFEATURES; j++){
-	// 		//if (new_centers[i][j] != new_centers[i][j]) printf("new_centers[%d][%d] = %lf\n", i, j, new_centers[i][j]);
-	// 		printf("new_centers_len[%d] = %d\n", i, new_centers_len[i]);
-	// 	}
-	// }
 
 	// end = omp_get_wtime();
 	// printf("omp reduction time: %lf\n", end - start);
