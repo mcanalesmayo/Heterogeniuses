@@ -4,9 +4,6 @@ Spanish team "Heterogeniuses" participating in the HiPEAC Student Heterogeneous 
 
 ## Team members
 The team is composed by:
-- Santiago Gil Begué, University of Zaragoza
-- Alberto Álvarez Aldea, University of Zaragoza
-- David Nicuesa Aranda, University of Zaragoza
 - Jorge Cáncer Gil, University of Zaragoza
 - Carlos Escuín Blasco, Polytechnic University of Catalonia
 - Denisa Andreea Constantinescu, University of Malaga
@@ -17,6 +14,13 @@ The team is composed by:
 The team is advised by:
 - Rubén Gran Tejero
 - Darío Suárez Gracia
+
+## Implementations
+* The CPU-(2x)GPU-FPGA version is under the opencl folder in the [master branch](https://github.com/MarcosCM/Heterogeniuses)
+* The (2x)GPUs version is under the [GPUs branch](https://github.com/MarcosCM/Heterogeniuses/tree/cpu-gpus)
+* The FPGA version is under the [FPGA branch](https://github.com/MarcosCM/Heterogeniuses/tree/cpu-fpga)
+* The OpenMP version is under the openmp/kmeans_openmp folder in the [master branch](https://github.com/MarcosCM/Heterogeniuses)
+* The Sequential version is under the openmp/kmeans_serial folder in the [master branch](https://github.com/MarcosCM/Heterogeniuses)
 
 ## Rodinia Benchmark Suite 3.1
 
