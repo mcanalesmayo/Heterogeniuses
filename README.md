@@ -2,9 +2,10 @@
 
 Spanish team "Heterogeniuses" participating in the HiPEAC Student Heterogeneous Programming Challenge [CSW Spring 2017](https://www.hipeac.net/csw/2017/Zagreb/).
 
-Link to the presentation: [here](https://github.com/MarcosCM/Heterogeniuses/blob/master/ThreeIsNotACrowd_Heterogeniuses.pdf)
-
-Link to the measured execution times: [here](https://github.com/MarcosCM/Heterogeniuses/blob/master/Datasets_ExecutionTimes.xlsx)
+Links:
+- [Poster](https://github.com/mcanalesmayo/Heterogeniuses/blob/master/Final_Poster_HiPEAC2017_Zagreb.pdf)
+- [Presentation](https://github.com/MarcosCM/Heterogeniuses/blob/master/ThreeIsNotACrowd_Heterogeniuses.pdf)
+- [Execution times](https://github.com/MarcosCM/Heterogeniuses/blob/master/Datasets_ExecutionTimes.xlsx)
 
 ## Team members
 The team is composed by:
